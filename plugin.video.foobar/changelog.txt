@@ -1,0 +1,4 @@
+[B]4.6.0[/B]
+- Tilpasninger for Kodi v17 Krypton.
+- Mulighet for Ã¥ gÃ¥ til serie fra hurtigmenyen
+- Fikset episodetittler
