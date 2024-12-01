@@ -9,12 +9,14 @@ try:  # Python 3
 except ImportError:  # Python 2
     from urllib import quote_plus
 
+from data import CHANNELS
 from helperobjects import TitleItem
-from kodiutils import (colour, get_cache, get_setting_bool, get_setting_int, get_url_json, has_credentials,
+from kodiutils import (colour, delete_cached_thumbnail, get_cache, get_setting_bool, get_setting_int, get_url_json, has_addon, has_credentials,
                        localize, localize_from_data, log, update_cache, url_for)
-from utils import find_entry, from_unicode, reformat_image_url, shorten_link, to_unicode, url_to_program
+from utils import find_entry, from_unicode, reformat_image_url, shorten_link, to_unicode, url_to_program, youtube_to_plugin_url
 from graphql_data import EPISODE_TILE
 
+SCREENSHOT_URL = 'https://www.vrt.be/vrtnu-static/screenshots'
 GRAPHQL_URL = 'https://www.vrt.be/vrtnu-api/graphql/v1'
 RESUMEPOINTS_URL = 'https://ddt.profiel.vrt.be/resumePoints'
 RESUMEPOINTS_MARGIN = 30  # The margin at start/end to consider a video as watched
@@ -47,18 +49,14 @@ def get_context_menu(program_name, program_id, program_title, program_type, is_f
     follow_suffix = localize(30410) if program_type != 'oneoff' else ''  # program
     encoded_program_title = to_unicode(quote_plus(from_unicode(program_title)))  # We need to ensure forward slashes are quoted
     if is_favorite:
-        extras = {}
-        # If we are in a favorites menu, move cursor down before removing a favorite
-        if plugin_path.startswith('/favorites'):
-            extras = {'move_down': True}
         context_menu.append((
             localize(30412, title=follow_suffix),  # Unfollow
-            'RunPlugin(%s)' % url_for('unfollow', program_name=program_name, title=encoded_program_title, program_id=program_id, **extras)
+            'RunPlugin(%s)' % url_for('unfollow', program_id=program_id, program_title=encoded_program_title)
         ))
     else:
         context_menu.append((
             localize(30411, title=follow_suffix),  # Follow
-            'RunPlugin(%s)' % url_for('follow', program_name=program_name, title=encoded_program_title, program_id=program_id)
+            'RunPlugin(%s)' % url_for('follow', program_id=program_id, program_title=encoded_program_title)
         ))
 
     # Go to program
@@ -75,6 +73,10 @@ def get_context_menu(program_name, program_id, program_title, program_type, is_f
         context_menu.append((
             localize(30455),  # Delete from this list
             'RunPlugin(%s)' % url_for('resumepoints_continue_delete', episode_id=episode_id)
+        ))
+        context_menu.append((
+            localize(30456),  # Mark as watched (VRT MAX)
+            'RunPlugin(%s)' % url_for('resumepoints_continue_finish', episode_id=episode_id)
         ))
     return context_menu
 
@@ -428,7 +430,7 @@ def get_latest_episode_data(program_name):
     variables = {
         'pageId': '/vrtnu/a-z/{}.model.json'.format(program_name),
     }
-    return api_req(graphql_query, operation_name, variables)
+    return api_req(graphql_query, operation_name, variables, client='MobileAndroid')
 
 
 def get_seasons_data(program_name):
@@ -559,8 +561,42 @@ def get_seasons_data(program_name):
     return api_req(graphql_query, operation_name, variables)
 
 
+def set_favorite(program_id, program_title, is_favorite=True):
+    """Set favorite(add/remove to/from my list)"""
+    graphql_query = """
+        mutation setFavorite($input: FavoriteActionInput!) {
+          setFavoriteActionItem(input: $input) {
+            __typename
+            objectId
+            accessibilityLabel
+            action {
+              ... on FavoriteAction {
+                __typename
+                id
+                favorite
+              }
+              __typename
+            }
+            active
+            mode
+            title
+          }
+        }
+    """
+    operation_name = 'setFavorite'
+    variables = {
+        'input': {
+            'favorite': is_favorite,
+            'id': '{}:video:item'.format(program_id),
+            'title': program_title,
+        },
+    }
+    return api_req(graphql_query, operation_name, variables)
+
+
 def set_resumepoint(video_id, title, position, total):
     """Set resumepoint"""
+    data_json = {}
     # Respect resumepoint margins
     if position and total:
         if position < RESUMEPOINTS_MARGIN:
@@ -585,6 +621,76 @@ def set_resumepoint(video_id, title, position, total):
         data = dumps(payload).encode('utf-8')
         data_json = get_url_json(url='{}/{}'.format(RESUMEPOINTS_URL, video_id), cache=None, headers=headers, data=data, raise_errors='all')
         log(3, '[Resumepoints] Updated resumepoint {data}', data=data_json)
+    return data_json
+
+
+def delete_continue(episode_id):
+    """Delete continue episode using GraphQL API"""
+    import base64
+    from json import dumps
+    graphql_query = """
+        mutation listDelete($input: ListDeleteActionInput!) {
+          setListDeleteActionItem(input: $input) {
+            title
+            active
+            action {
+              __typename
+              ... on NoAction {
+                __typename
+                reason
+              }
+              ... on ListTileDeletedAction {
+                __typename
+                listId
+                listName
+                id
+              }
+            }
+            __typename
+          }
+        }
+    """
+    list_name = {
+        'listId': 'dynamic:/vrtnu.model.json@resume-list-video',
+        'listType': 'verderkijken',
+    }
+    encoded_list_name = base64.b64encode(dumps(list_name).encode('utf-8'))
+    operation_name = 'listDelete'
+    variables = {
+        'input': {
+            'id': episode_id,
+            'listName': encoded_list_name.decode('utf-8'),
+        },
+    }
+    return api_req(graphql_query, operation_name, variables)
+
+
+def finish_continue(episode_id):
+    """Finish continue episode using GraphQL API"""
+    graphql_query = """
+        mutation finishItem($input: FinishActionInput!) {
+          setFinishActionItem(input: $input) {
+            __typename
+            objectId
+            title
+            accessibilityLabel
+            action {
+              ... on FinishAction {
+                id
+                __typename
+              }
+              __typename
+            }
+          }
+        }
+    """
+    operation_name = 'finishItem'
+    variables = {
+        'input': {
+            'id': episode_id,
+        },
+    }
+    return api_req(graphql_query, operation_name, variables)
 
 
 def get_paginated_episodes(list_id, page_size, end_cursor=''):
@@ -817,12 +923,13 @@ def convert_episode(item, destination=None):
     program_type = episode.get('program').get('programType')
 
     # FIXME: Find a better way to determine mixed episodes
-    if destination in ('recent', 'favorites_recent', 'resumepoints_continue', 'featured'):
+    if destination in ('recent', 'favorites_recent', 'resumepoints_continue', 'featured', 'search_query'):
         program_type = 'mixed_episodes'
 
     episode_title = episode.get('title')
-    offtime = dateutil.parser.parse(episode.get('offTimeRaw'))
-    ontime = dateutil.parser.parse(episode.get('onTimeRaw'))
+
+    offtime = dateutil.parser.parse(episode.get('offTimeRaw') or '1970-01-01T00:00:00.000+00:00')
+    ontime = dateutil.parser.parse(episode.get('onTimeRaw') or '1970-01-01T00:00:00.000+00:00')
     mpaa = episode.get('ageRaw') or ''
     product_placement = episode.get('productPlacementShortValue') == 'pp'
     region = episode.get('regionRaw')
@@ -974,7 +1081,7 @@ def get_latest_episode(program_name):
     page = api_data.get('data').get('page')
     if page:
         most_relevant_ep = page.get('components')[0].get('mostRelevantEpisodeTile')
-        if most_relevant_ep.get('title') == 'Meest recente aflevering':
+        if most_relevant_ep and most_relevant_ep.get('title') == 'Meest recente aflevering':
             latest_episode = most_relevant_ep
         else:
             items = page.get('components')[1].get('items')[0].get('components')[0]
@@ -1006,6 +1113,53 @@ def get_favorite_programs(end_cursor=''):
     api_data = get_paginated_programs(list_id=list_id, page_size=page_size, end_cursor=end_cursor)
     programs = convert_programs(api_data, destination='favorites_programs')
     return programs
+
+
+def get_search(keywords, end_cursor=''):
+    """Get search items"""
+    import base64
+    from json import dumps
+    page_size = get_setting_int('itemsperpage', default=50)
+    query_string = None
+    destination = None
+
+    entity_types = ['video-program', 'video-episode']
+    programs = []
+    episodes = []
+    items = []
+
+    for entity_type in entity_types:
+        facets = []
+        if keywords:
+            destination = 'search_query'
+            query_string = keywords
+        facets.append({
+            'name': 'entitytype',
+            'values': [entity_type],
+        })
+        if entity_type == 'video-program':
+            result_type = 'watch'
+        else:
+            result_type = entity_type
+        search_dict = {
+            'facets': facets,
+            'resultType': result_type,
+        }
+        if query_string:
+            search_dict['q'] = query_string
+
+        list_id = 'tl-pag-srch|o%14|{}|{}%'.format(dumps(search_dict), result_type)
+        list_id = '#{}'.format(base64.b64encode(list_id.encode('utf-8')).decode('utf-8'))
+
+        if entity_type == 'video-program' and not end_cursor:
+            programs_data = get_paginated_programs(list_id=list_id, page_size=page_size, end_cursor=end_cursor)
+            programs = convert_programs(programs_data, destination=destination, keywords=keywords)
+            items.extend(programs)
+        elif entity_type == 'video-episode':
+            episodes_data = get_paginated_episodes(list_id=list_id, page_size=page_size, end_cursor=end_cursor)
+            episodes, _, _ = convert_episodes(episodes_data, destination=destination, keywords=keywords)
+            items.extend(episodes)
+    return items
 
 
 def get_programs(category=None, channel=None, keywords=None, end_cursor=''):
@@ -1045,8 +1199,8 @@ def get_programs(category=None, channel=None, keywords=None, end_cursor=''):
     }
     if query_string:
         search_dict['q'] = query_string
-    encoded_search = base64.b64encode(dumps(search_dict).encode('utf-8'))
-    list_id = 'tl-pag-srch|watch#{}'.format(encoded_search.decode('utf-8'))
+
+    list_id = 'tl-pag-srch|o%14|{}|{}%'.format(dumps(search_dict), 'watch')
     list_id = '#{}'.format(base64.b64encode(list_id.encode('utf-8')).decode('utf-8'))
 
     api_data = get_paginated_programs(list_id=list_id, page_size=page_size, end_cursor=end_cursor)
@@ -1207,7 +1361,7 @@ def api_req(graphql_query, operation_name, variables, client='WEB'):
             'Authorization': 'Bearer ' + access_token,
             'Content-Type': 'application/json',
             'x-vrt-client-name': client,
-            'x-vrt-client-version': '1.5.0',
+            'x-vrt-client-version': '1.5.7',
         }
         data_json = get_url_json(url=GRAPHQL_URL, cache=None, headers=headers, data=data, raise_errors='all')
     return data_json
@@ -1561,3 +1715,231 @@ def localize_categories(categories, categories2):
             if key == 'name':
                 category[key] = localize_from_data(val, categories2)
     return sorted(categories, key=lambda x: x.get('name'))
+
+
+def get_episode_by_air_date(channel_name, start_date, end_date=None):
+    """Get an episode of a program given the channel and the air date in iso format (2024-10-04T19:35:00)"""
+    channel = find_entry(CHANNELS, 'name', channel_name)
+    if not channel:
+        return None
+
+    from datetime import datetime, timedelta
+    import dateutil.parser
+    import dateutil.tz
+    offairdate = None
+    try:
+        onairdate = dateutil.parser.parse(start_date, default=datetime.now(dateutil.tz.gettz('Europe/Brussels')))
+    except ValueError:
+        return None
+
+    if end_date:
+        try:
+            offairdate = dateutil.parser.parse(end_date, default=datetime.now(dateutil.tz.gettz('Europe/Brussels')))
+        except ValueError:
+            return None
+    video = None
+    now = datetime.now(dateutil.tz.gettz('Europe/Brussels'))
+    if onairdate.hour < 6:
+        schedule_date = onairdate - timedelta(days=1)
+    else:
+        schedule_date = onairdate
+    schedule_datestr = schedule_date.isoformat().split('T')[0]
+    url = 'https://www.vrt.be/bin/epg/schedule.{date}.json'.format(date=schedule_datestr)
+    schedule_json = get_url_json(url, fail={})
+    episodes = schedule_json.get(channel.get('id'), [])
+    if not episodes:
+        return None
+
+    # Guess the episode
+    episode_guess = None
+    if not offairdate:
+        mindate = min(abs(onairdate - dateutil.parser.parse(episode.get('startTime'))) for episode in episodes)
+        episode_guess = next((episode for episode in episodes if abs(onairdate - dateutil.parser.parse(episode.get('startTime'))) == mindate), None)
+    else:
+        duration = offairdate - onairdate
+        midairdate = onairdate + timedelta(seconds=duration.total_seconds() / 2)
+        mindate = min(abs(midairdate
+                          - (dateutil.parser.parse(episode.get('startTime'))
+                             + timedelta(seconds=(dateutil.parser.parse(episode.get('endTime'))
+                                                  - dateutil.parser.parse(episode.get('startTime'))).total_seconds() / 2))) for episode in episodes)
+        episode_guess = next((episode for episode in episodes
+                              if abs(midairdate
+                                     - (dateutil.parser.parse(episode.get('startTime'))
+                                        + timedelta(seconds=(dateutil.parser.parse(episode.get('endTime'))
+                                                             - dateutil.parser.parse(episode.get('startTime'))).total_seconds() / 2))) == mindate), None)
+    if episode_guess:
+        if episode_guess.get('episodeId'):
+            episode = get_single_episode_data(episode_guess.get('episodeId'))
+            _, _, _, video_item = convert_episode(episode)
+            video = {
+                'listitem': video_item,
+                'video_id': episode.get('data').get('catalogMember').get('watchAction').get('videoId'),
+                'publication_id': episode.get('data').get('catalogMember').get('watchAction').get('publicationId')
+            }
+            if video:
+                return video
+
+        # Airdate live2vod feature: use livestream cache of last 24 hours if no video was found
+        offairdate_guess = dateutil.parser.parse(episode_guess.get('endTime'))
+        if now - timedelta(hours=24) <= dateutil.parser.parse(episode_guess.get('endTime')) <= now:
+            start_date = onairdate.astimezone(dateutil.tz.UTC).isoformat()[0:19]
+            end_date = offairdate_guess.astimezone(dateutil.tz.UTC).isoformat()[0:19]
+
+        # Offairdate defined
+        if offairdate and now - timedelta(hours=24) <= offairdate <= now:
+            start_date = onairdate.astimezone(dateutil.tz.UTC).isoformat()[:19]
+            end_date = offairdate.astimezone(dateutil.tz.UTC).isoformat()[:19]
+
+        if start_date and end_date:
+            live2vod_title = '{} ({})'.format(episode_guess.get('title'), localize(30454))  # from livestream cache
+            video_item = TitleItem(
+                label=live2vod_title,
+                info_dict={
+                    'title': live2vod_title
+                },
+                art_dict={
+                    'thumb': episode_guess.get('image'),
+                    'poster': episode_guess.get('image'),
+                    'banner': episode_guess.get('image'),
+                    'fanart': episode_guess.get('image'),
+                },
+            )
+            video = {
+                'listitem': video_item,
+                'video_id': channel.get('live_stream_id'),
+                'start_date': start_date,
+                'end_date': end_date,
+            }
+            return video
+
+        video = {
+            'errorlabel': episode_guess.get('title')
+        }
+    return video
+
+
+def get_channels(channels=None, live=True):
+    """Construct a list of channel ListItems, either for Live TV or the TV Guide listing"""
+    from tvguide import TVGuide
+    _tvguide = TVGuide()
+
+    channel_items = []
+    for channel in CHANNELS:
+        if channels and channel.get('name') not in channels:
+            continue
+
+        context_menu = []
+        art_dict = {}
+        path = None
+
+        # Try to use the white icons for thumbnails (used for icons as well)
+        if has_addon('resource.images.studios.white'):
+            art_dict['thumb'] = 'resource://resource.images.studios.white/{studio}.png'.format(**channel)
+        else:
+            art_dict['thumb'] = 'DefaultTags.png'
+
+        if not live:
+            path = url_for('channels', channel=channel.get('name'))
+            label = channel.get('label')
+            plot = '[B]%s[/B]' % channel.get('label')
+            is_playable = False
+            info_dict = {'title': label, 'plot': plot, 'studio': channel.get('studio'), 'mediatype': 'video'}
+            stream_dict = []
+            prop_dict = {}
+        elif channel.get('live_stream') or channel.get('live_stream_id'):
+            if channel.get('live_stream_id'):
+                path = url_for('play_id', video_id=channel.get('live_stream_id'))
+            elif channel.get('live_stream'):
+                path = url_for('play_url', video_url=channel.get('live_stream'))
+            label = localize(30141, **channel)  # Channel live
+            playing_now = _tvguide.playing_now(channel.get('name'))
+            if playing_now:
+                label += ' [COLOR=yellow]| %s[/COLOR]' % playing_now
+            # A single Live channel means it is the entry for channel's TV Show listing, so make it stand out
+            if channels and len(channels) == 1:
+                label = '[B]%s[/B]' % label
+            is_playable = True
+            if channel.get('name') in ['een', 'canvas', 'ketnet']:
+                if get_setting_bool('showfanart', default=True):
+                    art_dict['fanart'] = get_live_screenshot(channel.get('name', art_dict.get('fanart')))
+                plot = '%s\n\n%s' % (localize(30142, **channel), _tvguide.live_description(channel.get('name')))
+            else:
+                plot = localize(30142, **channel)  # Watch live
+            # NOTE: Playcount and resumetime are required to not have live streams as "Watched" and resumed
+            info_dict = {'title': label, 'plot': plot, 'studio': channel.get('studio'), 'mediatype': 'video', 'playcount': 0, 'duration': 0}
+            prop_dict = {'resumetime': 0}
+            stream_dict = {'duration': 0}
+            context_menu.append((
+                localize(30413),  # Refresh menu
+                'RunPlugin(%s)' % url_for('delete_cache', cache_file='channel.{channel}.json'.format(channel=channel)),
+            ))
+        else:
+            # Not a playable channel
+            continue
+
+        channel_items.append(TitleItem(
+            label=label,
+            path=path,
+            art_dict=art_dict,
+            info_dict=info_dict,
+            prop_dict=prop_dict,
+            stream_dict=stream_dict,
+            context_menu=context_menu,
+            is_playable=is_playable,
+        ))
+
+    return channel_items
+
+
+def get_youtube(channels=None):
+    """Construct a list of youtube ListItems, either for Live TV or the TV Guide listing"""
+
+    youtube_items = []
+
+    if not has_addon('plugin.video.youtube') or not get_setting_bool('showyoutube', default=True):
+        return youtube_items
+
+    for channel in CHANNELS:
+        if channels and channel.get('name') not in channels:
+            continue
+
+        art_dict = {}
+
+        # Try to use the white icons for thumbnails (used for icons as well)
+        if has_addon('resource.images.studios.white'):
+            art_dict['thumb'] = 'resource://resource.images.studios.white/{studio}.png'.format(**channel)
+        else:
+            art_dict['thumb'] = 'DefaultTags.png'
+
+        for youtube in channel.get('youtube', []):
+            path = youtube_to_plugin_url(youtube['url'])
+            label = localize(30143, **youtube)  # Channel on YouTube
+            # A single Live channel means it is the entry for channel's TV Show listing, so make it stand out
+            if channels and len(channels) == 1:
+                label = '[B]%s[/B]' % label
+            plot = localize(30144, **youtube)  # Watch on YouTube
+            # NOTE: Playcount is required to not have live streams as "Watched"
+            info_dict = {'title': label, 'plot': plot, 'studio': channel.get('studio'), 'mediatype': 'video', 'playcount': 0}
+
+            context_menu = [(
+                localize(30413),  # Refresh menu
+                'RunPlugin(%s)' % url_for('delete_cache', cache_file='channel.{channel}.json'.format(channel=channel)),
+            )]
+
+            youtube_items.append(TitleItem(
+                label=label,
+                path=path,
+                art_dict=art_dict,
+                info_dict=info_dict,
+                context_menu=context_menu,
+                is_playable=False,
+            ))
+
+    return youtube_items
+
+
+def get_live_screenshot(channel):
+    """Get a live screenshot for a given channel, only supports VRT 1, Canvas and Ketnet"""
+    url = '%s/%s.jpg' % (SCREENSHOT_URL, channel)
+    delete_cached_thumbnail(url)
+    return url

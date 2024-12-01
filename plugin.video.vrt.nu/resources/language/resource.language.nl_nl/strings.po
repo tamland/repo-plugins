@@ -127,16 +127,16 @@ msgid "Documentaries"
 msgstr "Documentaires"
 
 msgctxt "#30045"
-msgid "All [I]one-off[/I] documentaries on VRT MAX"
-msgstr "Alle [I]one-off[/I] documentaires op VRT MAX"
+msgid "All documentaries on VRT MAX"
+msgstr "Alle documentaires op VRT MAX"
 
 msgctxt "#30046"
 msgid "Music"
 msgstr "Muziek"
 
 msgctxt "#30047"
-msgid "All [I]one-off[/I] music on VRT MAX"
-msgstr "Alle [I]one-off[/I] muziek op VRT MAX"
+msgid "All music on VRT MAX"
+msgstr "Alle muziek op VRT MAX"
 
 msgctxt "#30048"
 msgid "Most recent"
@@ -415,14 +415,6 @@ msgctxt "#30413"
 msgid "Refresh menu"
 msgstr "Vernieuw menu"
 
-msgctxt "#30415"
-msgid "No followed programs found"
-msgstr "Geen programma's worden gevolgd"
-
-msgctxt "#30416"
-msgid "We could not find any programs that are followed.\n\nEither right-click on a program or episode to follow a program, or follow a program on the VRT MAX website."
-msgstr "We konden geen programma's vinden die je volgt.\n\nKlik met de rechtermuisknop op een programma of aflevering om een programma te volgen of volg een programma op de VRT MAX-website."
-
 msgctxt "#30417"
 msgid "Go to program"
 msgstr "Ga naar programma"
@@ -512,8 +504,12 @@ msgid "from livestream cache"
 msgstr "uit de livestream-cache"
 
 msgctxt "#30455"
-msgid "Delete from this list"
-msgstr "Verwijder uit deze lijst"
+msgid "Delete from this list (VRT MAX)"
+msgstr "Verwijder uit deze lijst (VRT MAX)"
+
+msgctxt "#30456"
+msgid "Mark as watched (VRT MAX)"
+msgstr "Markeren als afgespeeld (VRT MAX)"
 
 
 ### SETTINGS
@@ -556,10 +552,6 @@ msgstr "Toon Mijn favorieten"
 msgctxt "#30744"
 msgid "When enabled, the user can follow their favorite programs and list these separately. In this case the VRT MAX add-on will download and update a list of your followed programs on the VRT MAX website."
 msgstr "Indien actief kan de gebruiker zijn favoriete programma's volgen en apart aanroepen. Dit zorgt er wel voor dat de VRT MAX add-on een lijst van favoriete programma's download en aanpast op de VRT MAX website."
-
-msgctxt "#30745"
-msgid "Manage My favorites…"
-msgstr "Beheer Mijn favorieten…"
 
 msgctxt "#30747"
 msgid "Enable watching activity"
@@ -840,14 +832,6 @@ msgstr "Cache"
 msgctxt "#30915"
 msgid "Clear VRT tokens"
 msgstr "Verwijder VRT-tokens"
-
-msgctxt "#30917"
-msgid "Refresh favorites"
-msgstr "Ververs favoriete programma's"
-
-msgctxt "#30919"
-msgid "Refresh watching activity"
-msgstr "Ververs kijkactiviteit"
 
 msgctxt "#30921"
 msgid "Use menu caching"
