@@ -861,46 +861,81 @@ def SetSortMethods(*additional_methods):
 def SelectSynopsis(synopses):
     if synopses is None:
         return ''
-    return (synopses.get('editorial')
-            or synopses.get('medium')
-            or synopses.get('large')
-            or synopses.get('small')
-            or synopses.get('programme_small', ''))
+    try:
+        return (synopses.get('editorial')
+                or synopses.get('medium')
+                or synopses.get('large')
+                or synopses.get('small')
+                or synopses.get('programme_small')
+                or synopses.get('programmeSmall')      # Seen in bundles on iplayer's main page.
+                or synopses.get('live')
+                or '')
+    except AttributeError:
+        # Allow for the odd event that `synopses` is a single string.
+        if isinstance(synopses, str):
+            return synopses
+        else:
+            raise
 
 
 def SelectImage(images):
     if not images:
         return 'DefaultFolder.png'
     return(images.get('standard')
+           or images.get('default')
            or images.get('promotional')
            or images.get('promotional_with_logo')
-           or images.get('portrait', 'DefaultFolder.png')).replace('{recipe}', '832x468')
+           or images.get('portrait')
+           or 'DefaultFolder.png').replace('{recipe}', '832x468')
 
 
-def ParseProgramme(progr_data):
-    return {
-        'url': 'https://www.bbc.co.uk/iplayer/episodes/' + progr_data['id'],
-        'name': '[B]{}[/B] - {} episodes available'.format(progr_data['title'], progr_data['count']),
+def ParseProgramme(progr_data, playable=False):
+    if playable:
+        programme = {
+            'url': 'https://www.bbc.co.uk/iplayer/episode/' + progr_data['id'],
+            'name': progr_data['title']
+        }
+    else:
+        programme = {
+            'url': 'https://www.bbc.co.uk/iplayer/episodes/' + progr_data['id'],
+            'name': '[B]{}[/B] - {} episodes available'.format(progr_data['title'], progr_data['count'])
+        }
+
+    programme.update({
         'iconimage': progr_data.get('images', {}).get('standard', 'DefaultFolder.png').replace('{recipe}', '832x468'),
         'description': SelectSynopsis(progr_data['synopses'])
-    }
+    })
+    return programme
 
 
 def ParseEpisode(episode_data):
     title = episode_data.get('title', '')
+    if isinstance(title, dict):
+        title= title.get('default', '')
     subtitle = episode_data.get('subtitle')
+    if isinstance(subtitle, dict):
+        subtitle = subtitle.get('default')
     if subtitle:
         title = ' - '.join((title, subtitle))
-    version_data = episode_data['versions'][0]
-    description = SelectSynopsis(episode_data.get('synopses'))
+    description = SelectSynopsis(episode_data.get('synopses') or episode_data.get('synopsis'))
+    duration = ''
+    version_data = episode_data.get('versions')
+    if version_data:
+        version = version_data[0]
+        duration = iso_duration_2_seconds(version.get('duration', {}).get('value', '')) or ''
+        availability = version.get('availability', {}).get('remaining')
+        if isinstance(availability, dict):
+            availability = availability.get('text', '')
+        if availability:
+            description = '\n\n'.join((description, availability))
 
     return {
         'url': 'https://www.bbc.co.uk/iplayer/episode/' + episode_data['id'],
         'name': title,
-        'iconimage': SelectImage(episode_data.get('images')),
+        'iconimage': SelectImage(episode_data.get('images') or episode_data.get('image')),
         'description': description,
         'aired': episode_data.get('release_date_time', '').split('T')[0],
-        # 'total_time': str(iso_duration_2_seconds(version_data['duration']['value']))
+        'total_time': str(duration)
     }
 
 
@@ -1046,7 +1081,8 @@ def GetJsonDataWithBBCid(url, retry=True):
     if not json_data:
         xbmc.log(f"[ipwww_video] [Warning] No JSON data on page '{url}'.")
         return
-    if json_data['id']['signedIn']:
+    identity = json_data.get('id') or json_data['identity']
+    if identity['signedIn']:
         return json_data
 
     if retry:
@@ -1113,23 +1149,19 @@ def RemoveWatching(episode_id):
 
 def ListFavourites():
     """AKA 'Watchlist', FKA 'Added'."""
-    data = GetJsonDataWithBBCid("https://www.bbc.co.uk/iplayer/added")
+    data = GetJsonDataWithBBCid("https://www.bbc.co.uk/iplayer/watchlist")
     if not data:
         return
-    has_episodes = False
+
     for added_item in data['items']['elements']:
         programme = added_item['programme']
         ct_mnu = [('Remove',
                    f'RunPlugin(plugin://plugin.video.iplayerwww?mode=302&episode_id={programme["id"]}&url=url)')]
         if programme['count'] == 1:
-            CheckAutoplay(context_mnu=ct_mnu, **ParseEpisode(programme['initial_children'][0]))
-            has_episodes = True
+            CheckAutoplay(context_mnu=ct_mnu, **ParseProgramme(programme, playable=True))
         else:
             AddMenuEntry(mode=128, subtitles_url='', context_mnu=ct_mnu, **ParseProgramme(programme))
-    if has_episodes:
-        SetSortMethods(xbmcplugin.SORT_METHOD_DATE)
-    else:
-        SetSortMethods()
+    SetSortMethods()
 
 
 def RemoveFavourite(programme_id):
@@ -1142,23 +1174,37 @@ def RemoveFavourite(programme_id):
     xbmc.executebuiltin('Container.Refresh')
 
 
-def ListRecommendations():
-    data = GetJsonDataWithBBCid('https://www.bbc.co.uk/iplayer/recommendations')
+def ListRecommendations(item_id=None):
+    data = GetJsonDataWithBBCid('https://www.bbc.co.uk/iplayer')
     if not data:
         return
-    for recommended_item in data['items']['elements']:
-        episode = recommended_item['episode']
-        item_data = ParseEpisode(episode)
-        if not item_data:
-            continue
-        tleo_id = episode['tleo_id']
-        if tleo_id != episode['id']:
-            all_episodes_link = 'https://www.bbc.co.uk/iplayer/episodes/' + tleo_id
-            item_data['context_mnu'] = [
-                (translation(30600),
-                 f'Container.Update(plugin://plugin.video.iplayerwww/?mode=128&url={all_episodes_link})')]
-        CheckAutoplay(**item_data)
-    SetSortMethods(xbmcplugin.SORT_METHOD_DATE)
+
+    if item_id and item_id != 'url':
+        # find the bundle and return its content from the main page:
+        for bundle in data['bundles']:
+            if bundle['id'] == item_id:
+                for recommended_item in bundle['entities']:
+                    episode = recommended_item['episode']
+                    item_data = ParseEpisode(episode)
+                    if not item_data:
+                        continue
+                    tleo_id = episode.get('tleo', {}).get('id')
+                    if tleo_id and tleo_id != episode['id']:
+                        all_episodes_link = 'https://www.bbc.co.uk/iplayer/episodes/' + tleo_id
+                        item_data['context_mnu'] = [
+                            (translation(30600),        # View all episodes
+                             f'Container.Update(plugin://plugin.video.iplayerwww/?mode=128&url={all_episodes_link})')]
+                    CheckAutoplay(**item_data)
+                SetSortMethods(xbmcplugin.SORT_METHOD_DATE)
+                return
+    else:
+        # Present the various rails of recommendations on iplayer's home page as folders in Kodi
+        for bundle in data['bundles']:
+            bundle_id = bundle.get('id', '')
+            if bundle_id in ('recommendations', 'if-you-liked'):
+                AddMenuEntry(bundle['title']['default'], bundle_id, 198,
+                             SelectImage(bundle.get('image')), SelectSynopsis(bundle.get('synopses')))
+
 
 
 def PlayStream(name, url, iconimage, description='', subtitles_url='', episode_id=None, stream_id=None, replay_chan_id=''):
@@ -1201,9 +1247,11 @@ def GetLiveStartPosition(chan_id):
 
     from datetime import datetime, timezone
 
-    # Apart from bbc_one_hd, schedules from HD channels must be requested by their non-HD counterpart.
-    if chan_id.endswith('_hd') and not chan_id.startswith('bbc_one'):
+    # Schedules from HD channels must be requested by their non-HD counterpart.
+    if chan_id.endswith('_hd'):
         chan_id = chan_id[:-3]
+    if chan_id == 'bbc_one':
+        chan_id = 'bbc_one_london'
 
     now = datetime.now(timezone.utc)
     resp = None
@@ -1336,6 +1384,11 @@ def ParseDASHStreams(stream_id):
             streams.append((tmp_sup, 1, url, '1280x720', protocol))
     source = int(ADDON.getSetting('subtitle_source'))
     for href, protocol, supplier in mediaselector[1]:
+        if '$Number$' in href:
+            # Found in live and red-button streams and requires `$Number$` to be replaced by
+            # a DASH segment id.
+            # Since DASH is handled by Inputstream Adaptive, live subtitles are not supported.
+            continue
         if 'akamai' in supplier and source in [0,1]:
             tmp_sup = 1
         elif 'limelight' in supplier and source in [0,2]:
@@ -1422,6 +1475,9 @@ def ScrapeAvailableStreams(url):
             elif (stream['kind'] == 'webcast'):
                 st.append(stream['id'])
                 ty.append(2)
+            elif (stream['kind'] == 'simulcast'):
+                st.append(stream['serviceId'])
+                ty.append(0)
             elif (stream['kind'] == 'signed'):
                 stream_id_sl = stream['id']
             elif (stream['kind'] == 'audio-described'):
