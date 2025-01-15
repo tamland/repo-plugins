@@ -5,16 +5,17 @@ import xbmc
 from lib.utils.kodi import get_addon_setting, log
 
 from .abstract_provider import AbstractProvider
-from .fr import OrangeCaraibeProvider, OrangeFranceProvider, OrangeReunionProvider
+from .fr import FreeOqeeProvider, OrangeCaraibeProvider, OrangeFranceProvider, OrangeReunionProvider
 
 _PROVIDERS = {
+    "France.OQEE by Free": FreeOqeeProvider,
     "France.Orange": OrangeFranceProvider,
     "France.Orange Caraïbe": OrangeCaraibeProvider,
     "France.Orange Réunion": OrangeReunionProvider,
 }
 
-_PROVIDER_NAME: str = get_addon_setting("provider.name")
-_PROVIDER_COUNTRY: str = get_addon_setting("provider.country")
+_PROVIDER_NAME = get_addon_setting("provider.name")
+_PROVIDER_COUNTRY = get_addon_setting("provider.country")
 _PROVIDER_KEY = f"{_PROVIDER_COUNTRY}.{_PROVIDER_NAME}"
 
 _PROVIDER = _PROVIDERS[_PROVIDER_KEY]() if _PROVIDERS.get(_PROVIDER_KEY) is not None else None
