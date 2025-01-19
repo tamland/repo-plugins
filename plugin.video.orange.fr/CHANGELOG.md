@@ -1,5 +1,37 @@
 # 2.x
 
+## [2.3.3](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.3.3) - 2025-01-15
+
+### Changed
+- Miscellaneous code improvements and cleaning
+
+### Fixed
+- Detection by IPTV Manager ([#73](https://github.com/f-lawe/plugin.video.orange.fr/issues/73))
+- Authentication to Orange servers ([#74](https://github.com/f-lawe/plugin.video.orange.fr/issues/74))
+
+## [2.3.2](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.3.2) - 2024-12-05
+
+### Changed
+- Revert to legacy Inputstream Adaptive API
+- WIP on OQEE by Free
+
+## [2.3.1](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.3.1) - 2024-10-12
+
+### Changed
+- Routing and provider interface now allow various depths in catchup menus ([#67](https://github.com/f-lawe/plugin.video.orange.fr/issues/67))
+
+## [2.3.0](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.3.0) - 2024-10-11
+
+### Changed
+- Update to InputstreamAdaptive for Kodi 21 ([#63](https://github.com/f-lawe/plugin.video.orange.fr/issues/63))
+- Avoid reauthentication when stored session data is not expired ([#64](https://github.com/f-lawe/plugin.video.orange.fr/issues/64))
+- Better error management ([#65](https://github.com/f-lawe/plugin.video.orange.fr/issues/65))
+
+## [2.2.1](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.2.1) - 2024-10-07
+
+### Changed
+- HTTP requests are now handled with [requests](https://pypi.org/project/requests/) ([#61](https://github.com/f-lawe/plugin.video.orange.fr/issues/61))
+
 ## [2.2.0](https://github.com/f-lawe/plugin.video.orange.fr/releases/tag/v2.2.0) - 2024-10-03
 
 ### Added
