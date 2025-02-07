@@ -151,6 +151,10 @@ class Channel(chn_class.Channel):
                               name="Bare pages layout", json=True,
                               parser=["collections"], creator=self.create_api_page_layout)
 
+        self._add_data_parser("https://npo.nl/start/api/domain/page-collection?type=dynamic_page&guid=",
+                              name="Categories layout", json=True,
+                              parser=["items"], creator=self.create_api_category_item)
+
         # Favourites (not yet implemented in the site).
         self._add_data_parser("https://npo.nl/start/api/domain/user-profiles",
                               match_type=ParserData.MatchExact, json=True,
@@ -167,7 +171,7 @@ class Channel(chn_class.Channel):
         # live radio, the folders and items
         self._add_data_parser(
             "https://www.npoluister.nl/", name="Live Radio Streams",
-            parser=Regexer.from_expresso('<li><a[^>]+href="(?<url>https:[^"]+)"[^>]*><img[^>]+src="(?<thumb>https:[^"]+)[^>]+alt="(?<title>[^"]+)"'),
+            parser=Regexer.from_expresso('<li><a[^>]+href="(?<url>https:[^"]+)"[^>]*>(?<title>[^<]+)'),
             creator=self.create_live_radio
         )
         self._add_data_parser(
@@ -593,6 +597,8 @@ class Channel(chn_class.Channel):
             content_type = contenttype.TVSHOWS
         elif page_type == "PROGRAM":
             content_type = contenttype.EPISODES
+        elif page_type == "DYNAMIC_PAGE":
+            content_type = contenttype.VIDEOS
         else:
             Logger.error(f"Missing for page type: {page_type}")
             return None
@@ -1126,11 +1132,9 @@ class Channel(chn_class.Channel):
         if "blend" in url:
             return None
         title = result_set["title"]
-        logo = result_set["thumb"]
         item = MediaItem(title, url, media_type=mediatype.VIDEO)
         item.isLive = True
         item.complete = False
-        item.thumb = logo
         item.isLive = True
         item.metaData["retrospect:parser"] = "liveRadio"
         return item
