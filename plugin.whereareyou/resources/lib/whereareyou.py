@@ -10,8 +10,10 @@ from resources.lib.api.harmony import HubControl
 from resources.lib.api.url import URL
 try:
     from urllib.parse import unquote_plus as _unquote_plus
+    from urllib.parse import unquote as _unquote
 except ImportError:
     from urllib import unquote_plus as _unquote_plus
+    from urllib import unquote as _unquote
 
 
 def _upgrade():
@@ -58,7 +60,9 @@ class Main:
                         self.MESSAGE, self.SETTINGS['ADDONLANGUAGE'](32303))
                     use_extended_dialog = True
                     break
-        if use_extended_dialog:
+        if use_extended_dialog and self.SETTINGS['bypassdialog']:
+            self._run_activity(activity, cmds)
+        elif use_extended_dialog:
             if self.DIALOG.yesno(self.TITLE, self.MESSAGE):
                 self._run_activity(activity, cmds)
         else:
@@ -125,6 +129,9 @@ class Main:
         activity = json_mappings.get(item, {}).get('activity', '')
         if self.SETTINGS['harmonyadvanced'] and self.SETTINGS['controltype'] == 2:
             cmds = json_mappings.get(item, {}).get('cmds', '')
+        elif self.THEURL and self.SETTINGS['controltype'] == 1:
+            cmds = self.THEURL
+            activity = 'launch_streaming_video'
         else:
             cmds = ''
         return activity, cmds
@@ -225,13 +232,18 @@ class Main:
             params = {}
         self.TITLE = _unquote_plus(params.get('title', ''))
         self.MESSAGE = _unquote_plus(params.get('message', ''))
+        self.THEURL = _unquote(params.get('the_url', ''))
+        self.LW.log(['the full set of arguments is: %s' % sys.argv[2]])
 
     def _run_activity(self, activity, cmds):
         if self.SETTINGS['controltype'] == 1:
             self.LW.log(['the HA script to run is: %s' % activity])
+            self.LW.log(['with the video URL of: %s' % cmds])
             if activity:
                 payload = {"entity_id": "script.%s" % activity}
-                theurl = self.RESTURL + '/script/' + activity
+                if cmds:
+                    payload['variables'] = {"the_url": cmds}
+                theurl = '%s/script/turn_on' % self.RESTURL
                 status, loglines, results = self.JSONURL.Post(
                     theurl, data=json.dumps(payload))
                 self.LW.log(loglines)

@@ -75,6 +75,11 @@ msgctxt "#32112"
 msgid "Use secure connection to Home Assistant"
 msgstr ""
 
+#: Settings
+msgctxt "#32113"
+msgid "Don't show confirmation dialog"
+msgstr ""
+
 #: Dialog Heading
 msgctxt "#32200"
 msgid "Select action"
