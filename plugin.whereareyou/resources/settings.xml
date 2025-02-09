@@ -38,6 +38,16 @@
 					<default>false</default>
 					<control type="toggle"/>
 				</setting>
+				<setting help="" id="bypassdialog" label="32113" parent="harmonycontrol" type="boolean">
+					<level>0</level>
+					<default>false</default>
+					<dependencies>
+						<dependency type="visible">
+							<condition operator="is" setting="harmonycontrol">true</condition>
+						</dependency>
+					</dependencies>
+					<control type="toggle"/>
+				</setting>
 				<setting id="controltype" type="integer" parent="harmonycontrol" label="32107" help="">
 					<level>0</level>
 					<default>2</default>

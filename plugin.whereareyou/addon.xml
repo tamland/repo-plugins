@@ -1,4 +1,4 @@
-<addon id="plugin.whereareyou" name="Where Are You" provider-name="pkscout" version="0.5.1">
+<addon id="plugin.whereareyou" name="Where Are You" provider-name="pkscout" version="0.6.1">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0" />
 		<import addon="script.module.requests" version="2.22.0+matrix.1" />
@@ -8,17 +8,15 @@
 		<provides>executable</provides>
 	</extension>
 	<extension point="xbmc.addon.metadata">
-		<news>v.0.5.1
-- added option to use Home Assistant script to launch external app
-- changed IP entry in settings to string to allow for domain name
-- added settings option to enable SSL (HA only)
-- Harmony Hub option now shows list of activites from which to pick
+		<news>v.0.6.1
+- added option to bypass dialog asking if you want to launch the streaming service
+- if using HA control and an AppleTV, can pass video URL to launch episode/movie directly
 		</news>
 		<assets>
 			<icon>icon.png</icon>
 		</assets>
 		<summary lang="en_GB">Plugin module to display a custom dialog box when playing external media.</summary>
-		<description lang="en_GB">Where Are You is a plugin for Kodi that accepts a URL from a stream file and then displays a dialog box with the title and message from the stream file URL.  After the dialog is dismissed a black video plays for 2 seconds.  This is basically to do what the media stub file does (which is display a title and a message for a given file), but for streaming files because the media stub only works if you have an optical drive attached to the device running Kodi.
+		<description lang="en_GB">Where Are You is a plugin for Kodi that accepts a URL from a stream file and then displays a dialog box with the title and message from the stream file URL.  Can also trigger Home Assistant script (including passing a URL to HA to directly launch a streaming app on an AppleTV or Andriod device) or Harmony Remote actions.  After the dialog is dismissed a black video plays for 2 seconds.  This is basically to do what the media stub file does (which is display a title and a message for a given file), but for streaming files because the media stub only works if you have an optical drive attached to the device running Kodi.
 		</description>
 		<platform>all</platform>
 		<license>GPL-2.0-only</license>

@@ -3,6 +3,7 @@ from resources.lib.kodisettings import *
 
 SETTINGSLIST = [{'name': 'mappings', 'default': ''},
                 {'name': 'harmonycontrol', 'default': False},
+                {'name': 'bypassdialog', 'default': False},
                 {'name': 'controltype', 'default': 2},
                 {'name': 'hub_ip', 'default': ''},
                 {'name': 'hub_port', 'default': '8123'},
