@@ -262,7 +262,7 @@ class Main(object):
         '''
 
         pdata = {'query': self.gqlmin(query), 'variables': variables}
-        data = cache.get(client.request, cache_duration, self.api_url, headers=self.headers, post=pdata)
+        data = client.request(self.api_url, headers=self.headers, post=pdata)
         items = data.get('data').get('mainSearch').get('edges')
         for item in items:
             video = item.get('node').get('entity')
@@ -384,11 +384,17 @@ class Main(object):
                 pass
 
             try:
-                cast = [x.get('node').get('name').get('nameText').get('text') for x in video.get('cast').get('edges')]
+                cast = [
+                    (x.get('node').get('name').get('nameText').get('text'),
+                        x.get('node').get('characters')[0].get('name')
+                        if x.get('node').get('characters') else '')
+                    for x in video.get('cast').get('edges')
+                ]
                 labels.update({'cast': cast})
                 cast2 = [
                     {'name': x.get('node').get('name').get('nameText').get('text'),
-                        'thumbnail': x.get('node').get('name').get('primaryImage').get('url')
+                     'role': x.get('node').get('characters')[0].get('name') if x.get('node').get('characters') else '',
+                     'thumbnail': x.get('node').get('name').get('primaryImage').get('url')
                         if x.get('node').get('name').get('primaryImage') else ''}
                     for x in video.get('cast').get('edges')
                 ]
@@ -442,19 +448,15 @@ class Main(object):
             self.litems.append({'labels': labels, 'cast2': cast2, 'art': art, 'videoId': videoId})
         return
 
-    def list_contents1(self):
-        key = self.parameters('key')
-        if DEBUG:
-            self.log('list_contents1({0})'.format(key))
-
+    def get_contents1(self, key):
         if key == 'showing':
-            page_data = cache.get(client.request, cache_duration, SHOWING_URL, headers=self.headers)
+            page_data = client.request(SHOWING_URL, headers=self.headers)
             tlink = SoupStrainer('div', {'class': 'lister-list'})
             mdiv = BeautifulSoup(page_data, "html.parser", parse_only=tlink)
             videos = mdiv.find_all('div', {'class': 'lister-item'})
             imdbIDs = [x.find('div', {'class': 'lister-item-image'}).get('data-tconst') for x in videos]
         else:
-            page_data = cache.get(client.request, cache_duration, COMING_URL, headers=self.headers)
+            page_data = client.request(COMING_URL, headers=self.headers)
             imdbIDs = re.findall(r'<a class="ipc-metadata-list-summary-item__t".+?href="/title/([^/]+)', page_data, re.DOTALL)
 
         self.litems = []
@@ -475,7 +477,15 @@ class Main(object):
             [i.start() for i in threads]
             [i.join() for i in threads]
 
-        for litem in self.litems:
+        return self.litems
+
+    def list_contents1(self):
+        key = self.parameters('key')
+        if DEBUG:
+            self.log('list_contents1({0})'.format(key))
+
+        items = cache.get(self.get_contents1, cache_duration, key)
+        for litem in items:
             listitem = self.make_listitem(litem.get('labels'), litem.get('cast2'))
             listitem.setArt(litem.get('art'))
             listitem.setProperty('IsPlayable', 'true')
@@ -492,12 +502,9 @@ class Main(object):
         # End of directory...
         xbmcplugin.endOfDirectory(int(sys.argv[1]), cacheToDisc=True)
 
-    def list_contents2(self):
-        key = self.parameters('key')
-        if DEBUG:
-            self.log('content_list3("{0}")'.format(key))
-
+    def get_contents2(self, key):
         videos = self.fetchdata(key)
+        litems = []
         for video in videos:
             if DEBUG:
                 self.log(repr(video))
@@ -537,10 +544,16 @@ class Main(object):
                     pass
 
                 try:
-                    cast = [x.get('node').get('name').get('nameText').get('text') for x in video.get('cast').get('edges')]
+                    cast = [
+                        (x.get('node').get('name').get('nameText').get('text'),
+                         x.get('node').get('characters')[0].get('name')
+                            if x.get('node').get('characters') else '')
+                        for x in video.get('cast').get('edges')
+                    ]
                     labels.update({'cast': cast})
                     cast2 = [
                         {'name': x.get('node').get('name').get('nameText').get('text'),
+                         'role': x.get('node').get('characters')[0].get('name') if x.get('node').get('characters') else '',
                          'thumbnail': x.get('node').get('name').get('primaryImage').get('url')
                             if x.get('node').get('name').get('primaryImage') else ''}
                         for x in video.get('cast').get('edges')
@@ -674,16 +687,25 @@ class Main(object):
             if 'mpaa' in labels.keys():
                 if 'TV' in labels.get('mpaa'):
                     labels.update({'mediatype': 'tvshow'})
+            art = {'thumb': poster,
+                   'icon': poster,
+                   'poster': poster,
+                   'fanart': fanart}
+            litems.append({'labels': labels, 'cast2': cast2, 'art': art, 'videoId': videoId})
+        return litems
 
-            listitem = self.make_listitem(labels, cast2)
-            listitem.setArt({'thumb': poster,
-                             'icon': poster,
-                             'poster': poster,
-                             'fanart': fanart})
+    def list_contents2(self):
+        key = self.parameters('key')
+        if DEBUG:
+            self.log('list_contents2("{0}")'.format(key))
 
+        items = cache.get(self.get_contents2, cache_duration, key)
+        for item in items:
+            listitem = self.make_listitem(item.get('labels'), item.get('cast2'))
+            listitem.setArt(item.get('art'))
             listitem.setProperty('IsPlayable', 'true')
             url = sys.argv[0] + '?' + urllib_parse.urlencode({'action': 'play',
-                                                              'videoid': videoId})
+                                                              'videoid': item.get('videoId')})
             xbmcplugin.addDirectoryItem(int(sys.argv[1]), url, listitem, False)
 
         # Sort methods and content type...
@@ -697,7 +719,7 @@ class Main(object):
 
     def fetch_video_url(self, video_id):
         if DEBUG:
-            self.log('fetch_video_url("{0})'.format(video_id))
+            self.log('fetch_video_url("{0}")'.format(video_id))
         vidurl = DETAILS_PAGE.format(video_id)
         pagedata = client.request(vidurl, headers=self.headers)
         r = re.search(r'application/json">([^<]+)', pagedata)
@@ -738,9 +760,14 @@ class Main(object):
     def play_id(self):
         imdb_id = self.parameters('imdb')
         if DEBUG:
-            self.log('play_id("{0})'.format(imdb_id))
+            self.log('play_id("{0}")'.format(imdb_id))
 
         video = self.fetchdata_id(imdb_id)
+        if 'errors' in video.keys():
+            msg = 'Invalid IMDb ID'
+            xbmcgui.Dialog().notification(_plugin, msg, _icon, 3000, False)
+            return
+
         video = video.get('data').get('title')
         if video.get('latestTrailer'):
             videoid = video.get('latestTrailer').get('id')
@@ -806,7 +833,7 @@ class Main(object):
             vtag.setWriters(labels.get('writer', []))
 
             if cast2:
-                cast2 = [xbmc.Actor(p['name'], '', 0, p['thumbnail']) for p in cast2]
+                cast2 = [xbmc.Actor(p['name'], p['role'], 0, p['thumbnail']) for p in cast2]
                 vtag.setCast(cast2)
 
         else:
@@ -877,15 +904,23 @@ class Main(object):
                         }
                     }
                 }
-                cast: credits(first: 10, filter: { categories: ["actor", "actress"] }) {
+                cast: credits(
+                    first: 10,
+                    filter: { categories: ["actor", "actress"] }
+                ) {
                     edges {
                         node {
-                            name {
-                                nameText {
-                                    text
+                            ... on Cast {
+                                name {
+                                    nameText {
+                                        text
+                                    }
+                                    primaryImage {
+                                        url
+                                    }
                                 }
-                                primaryImage {
-                                    url
+                                characters {
+                                    name
                                 }
                             }
                         }
@@ -905,7 +940,7 @@ class Main(object):
         '''
 
         pdata = {'query': self.gqlmin(query), 'variables': variables}
-        data = cache.get(client.request, cache_duration, self.api_url, headers=self.headers, post=pdata)
+        data = client.request(self.api_url, headers=self.headers, post=pdata)
         return data
 
     def fetchdata(self, key):
@@ -1125,12 +1160,17 @@ class Main(object):
                 ) {
                     edges {
                         node {
-                            name {
-                                nameText {
-                                    text
+                            ... on Cast {
+                                name {
+                                    nameText {
+                                        text
+                                    }
+                                    primaryImage {
+                                        url
+                                    }
                                 }
-                                primaryImage {
-                                    url
+                                characters {
+                                    name
                                 }
                             }
                         }
@@ -1165,7 +1205,7 @@ class Main(object):
                 'query': self.gqlmin(query_pt1 + query_pt2),
                 'variables': vpar
             }
-            data = cache.get(client.request, cache_duration, self.api_url, headers=self.headers, post=pdata)
+            data = client.request(self.api_url, headers=self.headers, post=pdata)
             pages += 1
             data = data.get('data')
 
