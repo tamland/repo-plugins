@@ -16,6 +16,7 @@ from resources.lib.addon_utils import get_item_label
 import resources.lib.favourites as fav
 from resources.lib.kodi_utils import get_kodi_version
 
+
 MENUS_SETTINGS_FP = os.path.join(Script.get_info('profile'), "menus_settings.json")
 
 # Json file that keeps, for each menu of the addon,

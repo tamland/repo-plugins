@@ -32,7 +32,7 @@ PROFILES_URL = "https://ws-backendtv.rmcbfmplay.com/heimdall-core/public/api/v2/
 CUSTOMDATALIVE = "description={}&deviceId=byPassARTHIUS&deviceName=Firefox-96.0----Windows&deviceType=PC&osName=Windows&osVersion=10&persistent=false&resolution=1600x900&tokenType=castoken&tokenSSO={}&type=LIVEOTT&accountId={}"
 CUSTOMDATAREPLAY = CUSTOMDATALIVE + '&entitlementId={}'
 
-GENERIC_HEADERS = {'User-Agent': web_utils.get_random_ua()}
+GENERIC_HEADERS = {'User-Agent': web_utils.get_random_windows_ua()}
 
 
 @Route.register
@@ -57,7 +57,7 @@ def get_token():
     headers = {
         "secret": "Basic Uk1DQkZNUGxheUFuZHJvaWR2MTptb2ViaXVzMTk3MA==",
         "Authorization": "Basic %s" % base64.b64encode(autorization.encode("utf-8")).decode("utf-8"),
-        "User-Agent": web_utils.get_random_ua(),
+        "User-Agent": web_utils.get_random_windows_ua(),
     }
 
     resp = urlquick.get(url, params=params, headers=headers).json()
@@ -104,7 +104,8 @@ def rmcbfmplay_root(plugin, path="", **kwargs):
     resp = urlquick.get(url, params=params, headers=GENERIC_HEADERS).json()
     for spot in resp["spots"]:
         item = Listitem()
-        item.label = spot["title"]
+        if "title" in spot:
+            item.label = spot["title"]
         item.set_callback(menu, "web/v1/spot/%s/content" % spot["id"])
         item_post_treatment(item)
         yield item
@@ -235,7 +236,7 @@ def menu(plugin, path, **kwargs):
 def video(plugin, path, title, **kwargs):
     """Menu of the app with v1 API."""
     headers = {
-        'User-Agent': web_utils.get_random_ua(),
+        'User-Agent': web_utils.get_random_windows_ua(),
         'Content-type': 'application/json',
         'Accept': 'application/json, text/plain, */*',
     }
@@ -275,10 +276,10 @@ def video(plugin, path, title, **kwargs):
             ).json()["entitlementId"]
 
             video_url = stream["url"]
-            customdata = CUSTOMDATAREPLAY.format(web_utils.get_random_ua(), token, account_id, entitlementId)
+            customdata = CUSTOMDATAREPLAY.format(web_utils.get_random_windows_ua(), token, account_id, entitlementId)
 
             headers = {
-                'User-Agent': web_utils.get_random_ua(),
+                'User-Agent': web_utils.get_random_windows_ua(),
                 'customdata': customdata,
                 'Origin': 'https://www.rmcbfmplay.com',
                 'Content-Type': '',
@@ -328,7 +329,7 @@ def playpodcast(plugin, path, title, **kwargs):
 
     # Deezer send directly the final url.
     if ".mp3" in path:
-        item.path = path + "|User-Agent=" + web_utils.get_random_ua() + "&Referer=https://www.deezer.com/"
+        item.path = path + "|User-Agent=" + web_utils.get_random_windows_ua() + "&Referer=https://www.deezer.com/"
     else:
         resp = urlquick.get(path, headers=GENERIC_HEADERS)
         data = resp.parse()
@@ -337,11 +338,9 @@ def playpodcast(plugin, path, title, **kwargs):
     return item
 
 
-@Resolver.register
-def get_live_url(plugin, item_id, **kwargs):
-
+def bfm_player(plugin, item_id, **kwargs):
     headers = {
-        'User-Agent': web_utils.get_random_ua(),
+        'User-Agent': web_utils.get_random_windows_ua(),
         'Content-type': 'application/json',
         'Accept': 'application/json, text/plain, */*',
     }
@@ -364,15 +363,17 @@ def get_live_url(plugin, item_id, **kwargs):
         if data["name"] == temp_id:
             for stream in data["streams"]:
                 if stream["drm"] == "WIDEVINE":
-
-                    # Workaround for IA bug : https://github.com/xbmc/inputstream.adaptive/issues/804
-                    response = urlquick.get(stream["url"], headers=GENERIC_HEADERS, max_age=-1)
-                    video_url = re.search('<Location>([^<]+)</Location>', response.text).group(1).replace(';', '&')
-                    customdata = CUSTOMDATALIVE.format(web_utils.get_random_ua(), token, "undefined")
+                    video_url = stream["url"]
+                    customdata = CUSTOMDATALIVE.format(web_utils.get_random_windows_ua(), token, "undefined")
                     headers = {
-                        'User-Agent': web_utils.get_random_ua(),
+                        'User-Agent': web_utils.get_random_windows_ua(),
                         'customdata': customdata,
                         'Origin': 'https://www.rmcbfmplay.com',
                         'Content-Type': ''
                     }
                     return resolver_proxy.get_stream_with_quality(plugin, video_url=video_url, license_url=LICENSE_URL, manifest_type='mpd', headers=headers)
+
+
+@Resolver.register
+def get_live_url(plugin, item_id, **kwargs):
+    return bfm_player(plugin, item_id, **kwargs)

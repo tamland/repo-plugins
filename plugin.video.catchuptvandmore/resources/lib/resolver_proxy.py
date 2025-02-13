@@ -67,7 +67,7 @@ URL_MTVNSERVICES_STREAM_ACCOUNT_EP = 'https://media-utils.mtvnservices.com/servi
                                      '&accountOverride=%s&ep=%s'
 # videoURI, accountOverride, ep
 
-URL_FRANCETV_PROGRAM_INFO = 'https://player.webservices.francetelevisions.fr/v1/videos/%s'
+URL_FRANCETV_PROGRAM_INFO = 'https://k7.ftven.fr/videos/%s'
 # VideoId
 
 URL_FRANCETV_HDFAUTH_URL = 'https://hdfauthftv-a.akamaihd.net/esi/TA?format=json&url=%s'
@@ -83,7 +83,7 @@ URL_TWITCH = 'https://player.twitch.tv/?channel=%s'
 # desired_language, videoid
 URL_REPLAY_ARTE = 'https://api.arte.tv/api/player/v2/config/%s/%s'
 
-GENERIC_HEADERS = {'User-Agent': web_utils.get_random_ua()}
+GENERIC_HEADERS = {'User-Agent': web_utils.get_random_windows_ua()}
 
 
 def __get_non_ia_stream_with_quality(plugin, url, manifest_type="hls", headers=None, map_audio=False,
@@ -238,7 +238,7 @@ def get_stream_with_quality(plugin,
     item = Listitem()
     stream_headers = urlencode(headers)
     item.property['inputstream.adaptive.stream_headers'] = stream_headers
-    if get_kodi_version() == 20:
+    if get_kodi_version() >= 20:
         item.property['inputstream.adaptive.manifest_headers'] = stream_headers
     item.path = video_url
     item.property[INPUTSTREAM_PROP] = "inputstream.adaptive"
@@ -339,14 +339,14 @@ def get_stream_vimeo(plugin,
     if referer is not None:
         html_vimeo = urlquick.get(url_vimeo,
                                   headers={
-                                      'User-Agent': web_utils.get_random_ua(),
+                                      'User-Agent': web_utils.get_random_windows_ua(),
                                       'Referer': referer
                                   },
                                   max_age=-1)
     else:
         html_vimeo = urlquick.get(
             url_vimeo,
-            headers={'User-Agent': web_utils.get_random_ua()},
+            headers={'User-Agent': web_utils.get_random_windows_ua()},
             max_age=-1)
     json_vimeo = json.loads(
         '{' +
@@ -397,8 +397,9 @@ def get_brightcove_video_json(plugin,
         key = policy_key
 
     headers = {
-        'User-Agent': web_utils.get_random_ua(),
-        'Accept': 'application/json;pk=%s' % key
+        'User-Agent': web_utils.get_random_windows_ua(),
+        'Accept': 'application/json;pk=%s' % key,
+        'X-Forwarded-For': plugin.setting.get_string('header_x-forwarded-for')
     }
     resp = urlquick.get(URL_BRIGHTCOVE_VIDEO_JSON % (data_account, data_video_id), headers=headers)
 
@@ -406,21 +407,23 @@ def get_brightcove_video_json(plugin,
     video_url = ''
     license_url = None
     is_drm = False
-
     manifest = 'hls'
+
     if 'sources' in json_parser:
         for url in json_parser["sources"]:
-            # Workaroud Inputstream adative can not some types of AES crypted streams
+            # Workaroud Inputstream adative can not play some types of AES crypted streams
             if 'src' in url:
                 if ('m3u8' in url["src"] or 'container' in url) and (is_drm is False):
                     manifest = 'hls'
                     video_url = url["src"]
                 if 'manifest.mpd' in url["src"]:
-                    manifest = 'mpd'
-                    video_url = url["src"]
                     is_drm = True
                     if 'key_systems' in url:
-                        license_url = url['key_systems']['com.widevine.alpha']['license_url']
+                        if 'com.widevine.alpha' in url["key_systems"]:
+                            license_url = url['key_systems']['com.widevine.alpha']['license_url']
+                            manifest = 'mpd'
+                            video_url = url["src"]
+
     else:
         if json_parser[0]['error_code'] == "ACCESS_DENIED":
             plugin.notify('ERROR', plugin.localize(30713))
@@ -465,19 +468,22 @@ def get_mtvnservices_stream(plugin,
     return video_url
 
 
-def __get_francetv_program_info(video_id):
+def get_francetv_program_info(video_id, islive=False):
     # Move Live TV on the new API
     geoip_value = web_utils.geoip()
     if not geoip_value:
         geoip_value = 'FR'
     params = {
         'country_code': geoip_value,
-        'browser': 'firefox',
-        'device_type': 'mobile'
+        'domain': 'www.france.tv',
+        'os': 'android',
+        'diffusion_mode': 'tunnel_first',
+        'capabilities': 'drm',
     }
+    if islive is False:
+        params.update({'browser': 'firefox', })
     resp = urlquick.get(URL_FRANCETV_PROGRAM_INFO % video_id, params=params, headers=GENERIC_HEADERS, max_age=-1)
-    json_parser_live_id = json.loads(resp.text)
-    return json_parser_live_id
+    return json.loads(resp.text)
 
 
 # FranceTV Part
@@ -486,77 +492,68 @@ def get_francetv_video_stream(plugin,
                               id_diffusion,
                               download_mode=False):
 
-    json_parser = __get_francetv_program_info(id_diffusion)
+    json_parser = get_francetv_program_info(id_diffusion)
 
     if 'video' not in json_parser:
         plugin.notify('ERROR', plugin.localize(30716))
         return False
 
-    all_video_datas = []
     video_datas = json_parser['video']
     # Implementer Caption (found case)
     # Implement DRM (found case)
-    if video_datas['drm'] is not None:
-        all_video_datas.append((video_datas['format'], video_datas['drm'], video_datas['token']))
+    if "akamai" in video_datas['token']:
+        url_token = video_datas['token']['akamai']
+    elif "drm" in video_datas['token']:
+        url_token = video_datas['token']['drm']
     else:
-        all_video_datas.append((video_datas['format'], None, video_datas['token']))
+        url_token = 'https://hdfauth.ftven.fr/esi/TA'
 
-    url_selected = all_video_datas[0][2]
-    if 'hls' in all_video_datas[0][0]:
-        json_parser2 = json.loads(
-            urlquick.get(url_selected, max_age=-1).text)
-        final_video_url = json_parser2['url']
+    params = {
+        'format': 'json',
+        'url': video_datas['url']
+    }
+
+    if 'hls' in video_datas['format']:
+        resp = urlquick.get(url_token, params=params, headers=GENERIC_HEADERS, max_age=-1)
+        final_video_url = json.loads(resp.text)['url']
         if download_mode:
             return download.download_video(final_video_url)
-        return final_video_url + '|User-Agent=' + web_utils.get_random_ua()
+        return final_video_url + '|User-Agent=' + web_utils.get_random_windows_ua()
 
-    if 'dash' in all_video_datas[0][0]:
+    if 'dash' in video_datas['format']:
+        license_key = None
+        headers = {
+            'User-Agent': web_utils.get_random_windows_ua(),
+            'origin': 'https://www.france.tv'
+        }
 
-        is_helper = inputstreamhelper.Helper('mpd')
-        if not is_helper.check_inputstream():
-            return False
-
-        item = Listitem()
-        item.property[INPUTSTREAM_PROP] = 'inputstream.adaptive'
-        item.property['inputstream.adaptive.manifest_type'] = 'mpd'
-        item.label = get_selected_item_label()
-        item.art.update(get_selected_item_art())
-        item.info.update(get_selected_item_info())
-
-        if all_video_datas[0][1]:
-            if download_mode:
-                xbmcgui.Dialog().ok(plugin.localize(14116), plugin.localize(30603))
-                return False
-            item.path = video_datas['url']
-            token_request = json.loads('{"id": "%s", "drm_type": "%s", "license_type": "%s"}'
-                                       % (id_diffusion, video_datas['drm_type'], video_datas['license_type']))
-            token = urlquick.post(video_datas['token'], json=token_request).json()['token']
-            license_request = '{"token": "%s", "drm_info": [D{SSM}]}' % token
-            license_key = 'https://widevine-proxy.drm.technology/proxy|Content-Type=application%%2Fjson|%s|' \
-                          % quote_plus(license_request)
-            item.property['inputstream.adaptive.license_type'] = 'com.widevine.alpha'
-            item.property['inputstream.adaptive.license_key'] = license_key
-        else:
-            headers = {
-                'User-Agent': web_utils.get_random_ua(),
-                # 2.0.0.0 -> 2.16.0.255 are french IP addresses, see https://lite.ip2location.com/france-ip-address-ranges
-                # 'X-Forwarded-For': '2.' + str(randint(0, 15)) + '.' + str(randint(0, 255)) + '.' + str(randint(0, 255)),
+        # DRM video
+        if video_datas['drm'] is True:
+            final_video_url = urlquick.get('https://hdfauth.ftven.fr/esi/TA', params=params, headers=GENERIC_HEADERS, max_age=-1).json()['url']
+            token = urlquick.post(url_token, headers=headers, json={"id": id_diffusion, "drm_type": "widevine", "license_type": "online"}).json()['token']
+            license_headers = {
+                'User-Agent': web_utils.get_random_windows_ua(),
+                'nv-authorizations': token,
+                'content-type': 'Application/octet-stream',
+                'Origin': 'https://www.france.tv',
+                'Referer': 'https://www.france.tv/'
             }
-            stream_headers = urlencode(headers)
-            json_parser2 = json.loads(urlquick.get(url_selected, headers=headers, max_age=-1).text)
-            resp3 = urlquick.get(json_parser2['url'], headers=headers, max_age=-1, allow_redirects=False)
-            if 400 > resp3.status_code >= 300:
-                location_url = resp3.headers['location']
-            else:
-                location_url = resp3.url
-            item.path = location_url
-            if get_kodi_version() == 20:
-                item.property['inputstream.adaptive.manifest_headers'] = stream_headers
-            else:
-                item.property['inputstream.adaptive.stream_headers'] = stream_headers
+            license_config = {  # for Python < v3.7 you should use OrderedDict to keep order
+                'license_server_url': 'https://api-drm.ftven.fr/v1/wvls/contentlicenseservice/v1/licenses/',
+                'headers': urlencode(license_headers),
+                'post_data': 'R{SSM}',
+                'response_data': 'R'
+            }
+            license_key = '|'.join(license_config.values())
+        else:
+            final_video_url = urlquick.get(url_token, params=params, headers=GENERIC_HEADERS, max_age=-1).json()['url']
             if download_mode:
-                return download.download_video(item.path)
-        return item
+                return download.download_video(final_video_url)
+
+        return get_stream_with_quality(plugin,
+                                       video_url=final_video_url,
+                                       manifest_type='mpd',
+                                       license_url=license_key)
 
     # Return info the format is not known
     return False
@@ -564,12 +561,31 @@ def get_francetv_video_stream(plugin,
 
 def get_francetv_live_stream(plugin, broadcast_id):
 
-    json_parser_live_id = __get_francetv_program_info(broadcast_id)
-    final_url = json_parser_live_id['video']['token']
+    json_parser = get_francetv_program_info(broadcast_id, islive=True)
 
-    resp = urlquick.get(final_url, max_age=-1)
-    video_url = json.loads(resp.text)['url']
-    return get_stream_with_quality(plugin, video_url, license_url=URL_LICENSE_FRANCETV)
+    if 'video' not in json_parser:
+        plugin.notify('ERROR', plugin.localize(30716))
+        return False
+
+    video_datas = json_parser['video']
+    if "akamai" in video_datas['token']:
+        url_token = video_datas['token']['akamai']
+    elif "drm" in video_datas['token']:
+        url_token = video_datas['token']['drm']
+    else:
+        url_token = 'https://hdfauth.ftven.fr/esi/TA'
+
+    params = {
+        'format': 'json',
+        'url': video_datas['url']
+    }
+    video_url = urlquick.get(url_token, params=params, headers=GENERIC_HEADERS, max_age=-1).json()['url']
+    if 'hls' in video_datas['format']:
+        manifest = 'hls'
+    else:
+        manifest = 'mpd'
+
+    return get_stream_with_quality(plugin, video_url, manifest_type=manifest, license_url=URL_LICENSE_FRANCETV)
 
 
 # Arte Part
@@ -578,7 +594,7 @@ def get_arte_video_stream(plugin,
                           video_id,
                           download_mode=False):
     url = URL_REPLAY_ARTE % (desired_language, video_id)
-    j = urlquick.get(url).json()
+    j = urlquick.get(url, headers=GENERIC_HEADERS, max_age=-1).json()
 
     language = []
     for stream in j['data']['attributes']['streams']:

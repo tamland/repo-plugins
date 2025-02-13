@@ -37,9 +37,9 @@ except ImportError:
 # Channels:
 #     * france.tv (https://www.france.tv/)
 
+URL_ROOT = 'https://www.france.tv'
 URL_API_MOBILE = utils.urljoin_partial("https://api-mobile.yatta.francetv.fr/")
 URL_API_FRONT = utils.urljoin_partial("http://api-front.yatta.francetv.fr")
-URL_LIVE = 'https://www.france.tv/%s/direct.html'
 
 
 @Route.register
@@ -145,7 +145,7 @@ def set_item_callback_based_on_type(item, type_, j, next_page_item=None):
         item_post_treatment(item)
         return True
 
-    if type_ == 'sous_categorie':
+    if type_ == 'sous_categorie' or type_ == 'categorie':
         item.set_callback(grab_json_collections, URL_API_MOBILE('/apps/sub-categories/%s' % j['url_complete']))
         item_post_treatment(item)
         return True
@@ -407,11 +407,13 @@ def get_video_url(plugin,
 
 @Resolver.register
 def get_live_url(plugin, item_id, **kwargs):
+    params = {'platform': 'apps'}
+    resp = urlquick.get(URL_API_MOBILE('/apps/channels/%s' % item_id), params=params, max_age=-1)
+    json_parser = json.loads(resp.text)
 
-    if item_id in ('spectacles-et-culture', 'france-2', 'france-3', 'france-4', 'france-5', 'franceinfo'):
-        resp = urlquick.get(URL_LIVE % item_id, headers={'User-Agent': web_utils.get_random_ua()}, max_age=-1)
-        broadcast_id = re.compile(r'videoId\"\:\"(.*?)\"', re.DOTALL).findall(resp.text)[0]
-        return resolver_proxy.get_francetv_live_stream(plugin, broadcast_id)
-
-    broadcast_id = 'SIM_France%s'
-    return resolver_proxy.get_francetv_live_stream(plugin, broadcast_id % item_id.split('-')[1])
+    for collection in json_parser['collections']:
+        if 'live' == collection['type']:
+            channel_path = collection["items"][0]["channel"]["channel_path"]
+            broadcast_id = collection["items"][0]["channel"]["si_id"]
+            if channel_path == item_id:
+                return resolver_proxy.get_francetv_live_stream(plugin, broadcast_id)

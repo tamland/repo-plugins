@@ -74,7 +74,7 @@ URL_PROGRAMS2 = 'https://www.rtbf.be/api/partner/generic/embed/program?v=1&partn
 URL_LIST_TV_CHANNELS = 'https://www.rtbf.be/api/partner/generic/epg/channellist?v=7&type=tv&partner_key=%s'
 URL_PROGRAMS = 'https://www.rtbf.be/api/partner/generic/program/getprograms?channel=%s&partner_key=%s'
 
-URL_LIST_SEARCH = 'https://bff-service.rtbf.be/auvio/v1.20/search?query=%s'
+URL_LIST_SEARCH = 'https://bff-service.rtbf.be/auvio/v1.23/search?query=%s'
 
 URL_SUB_CATEGORIES = 'https://www.rtbf.be/news/api/block?data[0][uuid]=%s&data[0][type]=widget&data[0][settings][id]=%s'
 # data-uuid and part of data-uuid

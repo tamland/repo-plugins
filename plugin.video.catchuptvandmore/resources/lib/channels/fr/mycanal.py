@@ -17,17 +17,21 @@ import time
 # noinspection PyUnresolvedReferences
 import inputstreamhelper
 import requests
+from requests.adapters import HTTPAdapter
 import urlquick
 # noinspection PyUnresolvedReferences
 import xbmcvfs
 # noinspection PyUnresolvedReferences
 from xbmc import getCondVisibility
 
+from urllib3.util import create_urllib3_context
+from urllib3 import PoolManager
+
 try:
-    from urllib.parse import quote, urlencode
+    from urllib.parse import quote, urlencode, urlparse
 except ImportError:
     # noinspection PyUnresolvedReferences
-    from urllib import quote, urlencode
+    from urllib import quote, urlencode, urlparse
 # noinspection PyUnresolvedReferences
 from codequick import Listitem, Resolver, Route, Script
 # noinspection PyUnresolvedReferences
@@ -89,15 +93,16 @@ REACT_QUERY_STATE = re.compile(r'window.REACT_QUERY_STATE\s*=\s*(.*?);\s*documen
 WINDOW_DATA = re.compile(r'window.__data=(.*?);\s*window.REACT_QUERY_STATE')
 
 
-class CustomSSLContextHTTPAdapter(requests.adapters.HTTPAdapter):
-    def __init__(self, ssl_context=None, **kwargs):
-        self.ssl_context = ssl_context
-        super().__init__(**kwargs)
-
+class AddedCipherAdapter(HTTPAdapter):
+    # Fix issue SSLError: dh key too small on some device.
     def init_poolmanager(self, connections, maxsize, block=False):
-        self.poolmanager = urllib3.poolmanager.PoolManager(
-            num_pools=connections, maxsize=maxsize,
-            block=block, ssl_context=self.ssl_context)
+        ctx = create_urllib3_context(ciphers=":HIGH:!DH:!aNULL")
+        self.poolmanager = PoolManager(
+            num_pools=connections,
+            maxsize=maxsize,
+            block=block,
+            ssl_context=ctx
+        )
 
 
 def get_key_id():
@@ -161,7 +166,7 @@ def is_valid_drm(drm_type):
 
 def get_certificate_data(plugin, certificate_url, session_requests):
     headers = {
-        "User-Agent": web_utils.get_random_ua(),
+        "User-Agent": web_utils.get_random_windows_ua(),
         "Accept": "application/json, text/plain, */*",
         "referrer": URL_ROOT
     }
@@ -177,7 +182,7 @@ def get_pass_token(plugin, data_pass, pass_url, session_requests):
         "Content-Type": "application/x-www-form-urlencoded",
         "Origin": URL_ROOT,
         "Referer": URL_ROOT,
-        "User-Agent": web_utils.get_random_ua()
+        "User-Agent": web_utils.get_random_windows_ua()
     }
     resp = session_requests.post(pass_url, data=data_pass, headers=headers, timeout=3)
     if not resp:
@@ -244,7 +249,7 @@ def list_channel(plugin, item_id, **kwargs):
     """
 
     resp = urlquick.get(URL_REPLAY_CHANNEL % item_id)
-    react_query_state = REACT_QUERY_STATE.findall(resp.text)[0]
+    react_query_state = REACT_QUERY_STATE.findall(resp.text)[0].replace("undefined", "\"undefined\"")
     json_react_query_state = json.loads(react_query_state)
 
     for category in json_react_query_state["queries"][0]["state"]["data"]["strates"]:
@@ -310,7 +315,7 @@ def list_contents(plugin, item_id, key_value, category, **kwargs):
 
 def find_category(item_id, key_value):
     resp = urlquick.get(URL_REPLAY_CHANNEL % item_id)
-    react_query_state = REACT_QUERY_STATE.findall(resp.text)[0]
+    react_query_state = REACT_QUERY_STATE.findall(resp.text)[0].replace("undefined", "\"undefined\"")
     json_react_query_state = json.loads(react_query_state)
     for category in json_react_query_state["queries"][0]["state"]["data"]["strates"]:
         if 'reactKey' in category and category['reactKey'] == key_value:
@@ -328,7 +333,10 @@ def list_programs(plugin, item_id, next_url, **kwargs):
 
         for strate in json_parser["strates"]:
             if strate["type"] == "contentRow" or strate["type"] == "contentGrid":
-                strate_title = program_title + ' - ' + strate["title"]
+                if 'title' in strate:
+                    strate_title = program_title + ' - ' + strate["title"]
+                else:
+                    strate_title = program_title
 
                 item = Listitem()
                 item.label = strate_title
@@ -447,9 +455,6 @@ def list_sub_programs(plugin, item_id, next_url, strate_title, **kwargs):
             if strate["type"] != "contentRow" and strate["type"] != "contentGrid":
                 continue
 
-            if strate["title"] not in strate_title:
-                continue
-
             for content_datas in strate['contents']:
                 if content_datas["type"] != 'article':
                     if 'subtitle' in content_datas:
@@ -518,11 +523,8 @@ def get_video_url(plugin,
             return False
 
         device_key_id, device_id_full, session_id = get_key_id()
-
         session_requests = requests.sessions.Session()
-        session_requests.adapters.pop("https://", None)
-        session_requests.mount("https://", CustomSSLContextHTTPAdapter(ctx))
-
+        session_requests.mount(SECURE_GEN_HAPI, AddedCipherAdapter())
         certificate_url, license_url, live_init, pass_url, portail_id = get_config(plugin, session_requests)
 
         data_pass = {
@@ -550,7 +552,7 @@ def get_video_url(plugin,
             'XX-OPERATOR': 'pc',
             'XX-Profile-Id': '0',
             'XX-SERVICE': 'mycanal',
-            'User-Agent': web_utils.get_random_ua(),
+            'User-Agent': web_utils.get_random_windows_ua(),
             'Origin': 'https://www.mycanal.fr'
         }
 
@@ -634,7 +636,9 @@ def get_video_url(plugin,
                 plugin.notify("INFO", "ism + drm not implemented", Script.NOTIFY_INFO)
                 return False
 
-            video_url = item.path + "/manifest"
+            parsed = urlparse(item.path)
+            parsed_url = parsed.path + "/manifest"
+            video_url = parsed._replace(path=parsed_url).geturl()
             input_stream_properties = {"license_type": None}
 
             return resolver_proxy.get_stream_with_quality(plugin, video_url=video_url,
@@ -652,7 +656,7 @@ def get_video_url(plugin,
 
         return item
 
-    json_parser = urlquick.get(next_url, headers={'User-Agent': web_utils.get_random_ua()}, max_age=-1).json()
+    json_parser = urlquick.get(next_url, headers={'User-Agent': web_utils.get_random_windows_ua()}, max_age=-1).json()
     return json_parser["detail"]["informations"]["playsets"]["available"][0]["videoURL"]
 
 
@@ -668,7 +672,7 @@ def get_live_token(plugin, device_key_id, live_init, pass_token, session_request
         }
     }
     headers = {
-        "User-Agent": web_utils.get_random_ua(),
+        "User-Agent": web_utils.get_random_windows_ua(),
         "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/json",
         "referrer": URL_ROOT
@@ -687,11 +691,8 @@ def get_live_url(plugin, item_id, **kwargs):
         return resolver_proxy.get_stream_dailymotion(plugin, LIVE_DAILYMOTION[item_id], False)
 
     device_key_id, device_id_full, session_id = get_key_id()
-
     session_requests = requests.sessions.Session()
-    session_requests.adapters.pop("https://", None)
-    session_requests.mount("https://", CustomSSLContextHTTPAdapter(ctx))
-
+    session_requests.mount(SECURE_GEN_HAPI, AddedCipherAdapter())
     certificate_url, license_url, live_init, pass_url, portail_id = get_config(plugin, session_requests)
 
     resp_app_config = session_requests.get(URL_REPLAY_CHANNEL % item_id)
@@ -746,7 +747,7 @@ def get_live_url(plugin, item_id, **kwargs):
         return False
 
     headers_licence = {
-        'User-Agent': web_utils.get_random_ua(),
+        'User-Agent': web_utils.get_random_windows_ua(),
         'Content-Type': ''
     }
     item = Listitem()
