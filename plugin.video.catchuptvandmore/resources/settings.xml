@@ -52,7 +52,7 @@
                 <setting label="30153" type="labelenum" id="arte.language" values="FR|DE|EN|ES|PL|IT" default="FR"/>
                 <setting label="30155" type="labelenum" id="euronews.language" values="FR|EN|AR|DE|IT|ES|PT|RU|RO|TR|FA|GR|HU|BG" default="FR"/>
                 <setting label="30154" type="labelenum" id="france24.language" values="FR|EN|AR|ES" default="FR"/>
-                <setting label="30157" type="labelenum" id="dw.language" values="EN|DE|DE+|ES|AR" default="EN"/>
+                <setting label="30157" type="labelenum" id="dw.language" values="EN|DE|ES|FR|AR" default="EN"/>
                 <setting label="30161" type="labelenum" id="qvc.language" values="JP|DE|IT|UK|US" default="UK"/>
                 <setting label="30162" type="labelenum" id="nhkworld.language" values="Outside Japan|In Japan" default="Outside Japan"/>
                 <setting label="30163" type="labelenum" id="cgtn.language" values="FR|EN|AR|ES|RU" default="FR"/>
@@ -114,8 +114,8 @@
         <setting label="30080" type="lsep" subsetting="true" visible="eq(1,true)"/>
         <!--<setting label="" type="bool" id="fr" default="true" visible="false"/>-->
 
-            <setting label="30260" type="text" id="mytf1.login" default=""/>
-            <setting label="30261" type="text" id="mytf1.password" option="hidden" default=""/>
+            <setting label="30260" type="text" id="tf1plus.login" default=""/>
+            <setting label="30261" type="text" id="tf1plus.password" option="hidden" default=""/>
 
             <setting label="30244" type="text" id="6play.login" default=""/>
             <setting label="30245" type="text" id="6play.password" option="hidden" default=""/>
@@ -176,6 +176,17 @@
             <setting type="text" id="iptv.channels_uri" default="plugin://plugin.video.catchuptvandmore/resources/lib/iptvmanager/channels/" visible="false"/>
             <setting type="text" id="iptv.epg_uri" default="plugin://plugin.video.catchuptvandmore/resources/lib/iptvmanager/epg/" visible="false"/>
     </category>
+
+
+    <!-- Advanced settings / Tools and other things to save -->
+    <category label="30005">
+        <setting label="30372" type="bool" id="log_pop_up" default="true"/>
+        <setting label="30370" type="action" action="RunPlugin(plugin://plugin.video.catchuptvandmore/resources/lib/addon_utils/clear_cache/)"/>
+        <setting label="" type="bool" id="show_hidden_items_information" default="true" visible="false"/>
+        <setting label="" type="bool" id="show_live_tv_m3u_info" default="true" visible="false"/>
+        <setting label="X-Forwarded-For" type="text" id="header_x-forwarded-for" default=""/>
+    </category>
+    <!-- Advanced settings / Tools and other things to save -->
 
 
 

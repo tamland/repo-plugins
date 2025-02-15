@@ -9,6 +9,7 @@ from __future__ import unicode_literals
 
 import json
 import re
+import uuid
 
 from builtins import str
 
@@ -88,6 +89,10 @@ PATTERN_JS_ID = re.compile(r'main-(.*?)\.bundle\.js')
 API_KEY = "3_hH5KBv25qZTd_sURpixbQW6a4OsiIzIEF2Ei_2H7TXTGLJb_1Hr4THKZianCQhWK"
 
 URL_TOKEN_DRM = 'https://6play-users.6play.fr/v2/platforms/chromecast/services/6play/users/%s/videos/%s/upfront-token'
+URL_TOKEN_REPLAY = 'https://drm.6cloud.fr/v1/customers/m6web/platforms/m6group_web/services/m6replay/users/%s/videos/%s/upfront-token'
+URL_TOKEN_LIVE = 'https://drm.6cloud.fr/v1/customers/m6web/platforms/m6group_web/services/6play/users/%s/live/%s/upfront-token'
+URL_TOKEN_UUID = 'https://front-auth.6cloud.fr/v2/platforms/m6group_web/getJwt'
+DEVICEID = '_luid_' + str(uuid.UUID(int=uuid.getnode()))
 
 # URL_LICENCE_KEY = 'https://lic.drmtoday.com/license-proxy-widevine/cenc/|Content-Type=&User-Agent=Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3041.0 Safari/537.36&Host=lic.drmtoday.com&Origin=https://www.6play.fr&Referer=%s&x-dt-auth-token=%s|R{SSM}|JBlicense'
 URL_LICENCE_KEY = 'https://lic.drmtoday.com/license-proxy-widevine/cenc/|Content-Type=&User-Agent=Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3041.0 Safari/537.36&Host=lic.drmtoday.com&x-dt-auth-token=%s|R{SSM}|JBlicense'
@@ -95,9 +100,9 @@ URL_LICENCE_KEY = 'https://lic.drmtoday.com/license-proxy-widevine/cenc/|Content
 
 URL_LIVE_JSON = 'https://chromecast.middleware.6play.fr/6play/v2/platforms/chromecast/services/6play/live'
 
-GENERIC_HEADERS = {'User-Agent': web_utils.get_random_ua()}
+GENERIC_HEADERS = {'User-Agent': web_utils.get_random_windows_ua()}
 M6_HEADERS = {
-    'User-Agent': web_utils.get_random_ua(),
+    'User-Agent': web_utils.get_random_windows_ua(),
     'x-customer-name': 'm6web'
 }
 
@@ -353,21 +358,6 @@ def list_videos(plugin, item_id, program_id, sub_category_id, **kwargs):
 
 @Resolver.register
 def get_video_url(plugin, item_id, video_id, download_mode=False, **kwargs):
-    if get_kodi_version() < 18:
-        video_json = urlquick.get(URL_JSON_VIDEO % video_id, headers=M6_HEADERS, max_age=-1)
-        json_parser = json.loads(video_json.text)
-
-        video_assets = json_parser['clips'][0]['assets']
-
-        final_video_url = get_final_video_url(plugin, video_assets)
-        if final_video_url is None:
-            return False
-
-        if download_mode:
-            return download.download_video(final_video_url)
-
-        return final_video_url
-
     api_key = get_api_key()
 
     if plugin.setting.get_string('6play.login') == '' or \
@@ -387,7 +377,7 @@ def get_video_url(plugin, item_id, video_id, download_mode=False, **kwargs):
     }
     # LOGIN
     headers = {
-        'User-Agent': web_utils.get_random_ua(),
+        'User-Agent': web_utils.get_random_windows_ua(),
         'referer': 'https://www.6play.fr/connexion'
     }
     resp2 = urlquick.post(URL_COMPTE_LOGIN, data=payload, headers=headers, max_age=-1)
@@ -405,14 +395,23 @@ def get_video_url(plugin, item_id, video_id, download_mode=False, **kwargs):
         return False
 
     # Build PAYLOAD headers
-    payload_headers = {
+    uuid_headers = {
         'x-auth-gigya-signature': account_signature,
         'x-auth-gigya-signature-timestamp': account_timestamp,
         'x-auth-gigya-uid': account_id,
+        'x-auth-device-id': DEVICEID,
         'x-customer-name': 'm6web'
     }
+    uuid_json = urlquick.get(URL_TOKEN_UUID, headers=uuid_headers, max_age=-1)
+    uuid_jsonparser = json.loads(uuid_json.text)
+    token = uuid_jsonparser["token"]
 
-    token_json = urlquick.get(URL_TOKEN_DRM % (account_id, video_id),
+    payload_headers = {
+        'X-Customer-Name': 'm6web',
+        'X-Client-Release': '5.103.3',
+        'Authorization': 'Bearer ' + token,
+    }
+    token_json = urlquick.get(URL_TOKEN_REPLAY % (account_id, video_id),
                               headers=payload_headers,
                               max_age=-1)
 
@@ -434,79 +433,44 @@ def get_video_url(plugin, item_id, video_id, download_mode=False, **kwargs):
             if 'subtitle_vtt' in asset["type"]:
                 subtitle_url = asset['full_physical_path']
 
-    for asset in video_assets:
-        if 'usp_dashcenc_h264' in asset["type"]:
-            dummy_req = urlquick.get(asset['full_physical_path'], headers=GENERIC_HEADERS, allow_redirects=False)
-            if 'location' in dummy_req.headers:
-                video_url = dummy_req.headers['location']
-            else:
-                video_url = asset['full_physical_path']
-            return resolver_proxy.get_stream_with_quality(
-                plugin, video_url=video_url, manifest_type='mpd',
-                subtitles=subtitle_url, license_url=URL_LICENCE_KEY % token)
-
-    for asset in video_assets:
-        if 'http_h264' in asset["type"]:
-            if "hd" in asset["video_quality"]:
-                video_url = asset['full_physical_path']
-                return resolver_proxy.get_stream_with_quality(
-                    plugin, video_url=video_url, subtitles=subtitle_url)
+    final_video_url = get_final_video_url(plugin, video_assets, 'usp_dashcenc_h264')
+    if final_video_url is not None:
+        return resolver_proxy.get_stream_with_quality(
+            plugin, video_url=final_video_url, manifest_type='mpd',
+            subtitles=subtitle_url, license_url=URL_LICENCE_KEY % token)
 
     return False
 
 
 def get_final_video_url(plugin, video_assets, asset_type=None):
+    RES_PRIORITY = {"sd": 0, "hd": 1}
+    manifests = []
+
     if video_assets is None:
         plugin.notify('ERROR', plugin.localize(30721))
         return None
 
-    all_datas_videos_quality = []
-    all_datas_videos_path = []
     for asset in video_assets:
         if asset_type is None:
             if 'http_h264' in asset["type"]:
-                all_datas_videos_quality.append(asset["video_quality"])
-                all_datas_videos_path.append(asset['full_physical_path'])
-            elif 'h264' in asset["type"]:
-                manifest = urlquick.get(asset['full_physical_path'], headers=GENERIC_HEADERS, max_age=-1)
-                if 'drm' not in manifest.text:
-                    all_datas_videos_quality.append(asset["video_quality"])
-                    all_datas_videos_path.append(asset['full_physical_path'])
-        elif asset_type in asset["type"]:
-            all_datas_videos_quality.append(asset["video_quality"])
-            all_datas_videos_path.append(asset['full_physical_path'])
+                manifest = (asset["video_quality"].lower(), asset["full_physical_path"])
+                if manifest not in manifests:
+                    manifests.append(manifest)
+                continue
+        elif asset["type"] == asset_type:
+            manifest = (asset["video_quality"].lower(), asset["full_physical_path"])
+            if manifest not in manifests:
+                manifests.append(manifest)
 
-    if len(all_datas_videos_quality) == 0:
-        xbmcgui.Dialog().ok('Info', plugin.localize(30602))
+    final_video_url = sorted(manifests, key=lambda m: RES_PRIORITY[m[0]], reverse=True)[0][1]
+
+    if len(final_video_url) == 0:
         return None
 
-    final_video_url = all_datas_videos_path[0]
-
-    desired_quality = Script.setting.get_string('quality')
-    if desired_quality == Quality['DIALOG']:
-        selected_item = xbmcgui.Dialog().select(
-            plugin.localize(30709),
-            all_datas_videos_quality)
-        if selected_item == -1:
-            return None
-        final_video_url = all_datas_videos_path[selected_item]
-
-    elif desired_quality == Quality['BEST']:
-        url_best = ''
-        i = 0
-        for data_video in all_datas_videos_quality:
-            if 'lq' not in data_video:
-                url_best = all_datas_videos_path[i]
-            i = i + 1
-        final_video_url = url_best
-
-    elif desired_quality == Quality['WORST']:
-        final_video_url = all_datas_videos_path[0]
-        i = 0
-        for data_video in all_datas_videos_quality:
-            if 'lq' in data_video:
-                final_video_url = all_datas_videos_path[i]
-                return final_video_url
+    if 'usp_dashcenc_h264' in asset["type"]:
+        dummy_req = urlquick.get(final_video_url, headers=GENERIC_HEADERS, allow_redirects=False)
+        if 'location' in dummy_req.headers:
+            final_video_url = dummy_req.headers['location']
 
     return final_video_url
 
@@ -563,14 +527,12 @@ def get_live_url(plugin, item_id, **kwargs):
         "callback": "jsonp_3bbusffr388pem4"
     }
     # LOGIN
-    resp2 = urlquick.post(
-        URL_COMPTE_LOGIN,
-        data=payload,
-        headers={
-            'User-Agent': web_utils.get_random_ua(),
-            'referer': 'https://www.6play.fr/connexion'})
-    json_parser = json.loads(
-        resp2.text.replace('jsonp_3bbusffr388pem4(', '').replace(');', ''))
+    headers = {
+        'User-Agent': web_utils.get_random_windows_ua(),
+        'referer': 'https://www.6play.fr/connexion'
+    }
+    resp2 = urlquick.post(URL_COMPTE_LOGIN, data=payload, headers=headers, max_age=-1)
+    json_parser = json.loads(resp2.text.replace('jsonp_3bbusffr388pem4(', '').replace(');', ''))
 
     if "UID" not in json_parser:
         plugin.notify('ERROR', '6play : ' + plugin.localize(30711))
@@ -580,12 +542,21 @@ def get_live_url(plugin, item_id, **kwargs):
     account_signature = json_parser["UIDSignature"]
 
     # Build PAYLOAD headers
-    payload_headers = {
-        'User-Agent': web_utils.get_random_ua(),
+    uuid_headers = {
         'x-auth-gigya-signature': account_signature,
         'x-auth-gigya-signature-timestamp': account_timestamp,
         'x-auth-gigya-uid': account_id,
+        'x-auth-device-id': DEVICEID,
         'x-customer-name': 'm6web'
+    }
+    uuid_json = urlquick.get(URL_TOKEN_UUID, headers=uuid_headers, max_age=-1)
+    uuid_jsonparser = json.loads(uuid_json.text)
+    token = uuid_jsonparser["token"]
+
+    payload_headers = {
+        'X-Customer-Name': 'm6web',
+        'X-Client-Release': '5.103.3',
+        'Authorization': 'Bearer ' + token,
     }
 
     live_item_id = item_id.upper()
@@ -594,7 +565,7 @@ def get_live_url(plugin, item_id, **kwargs):
     elif item_id in {'fun_radio', 'rtl2', 'gulli'}:
         live_item_id = item_id
 
-    url_token = URL_TOKEN_DRM % (account_id, 'dashcenc_%s' % live_item_id)
+    url_token = URL_TOKEN_LIVE % (account_id, 'dashcenc_%s' % live_item_id)
     token_json = urlquick.get(url_token, headers=payload_headers, max_age=-1)
     token_jsonparser = json.loads(token_json.text)
     token = token_jsonparser["token"]
@@ -619,12 +590,9 @@ def get_live_url(plugin, item_id, **kwargs):
                 subtitle_url = asset['full_physical_path']
 
     final_video_url = get_final_video_url(plugin, video_assets, 'delta_dashcenc_h264')
-    if final_video_url is None:
-        return False
+    if final_video_url is not None:
+        return resolver_proxy.get_stream_with_quality(
+            plugin, video_url=final_video_url, manifest_type='mpd',
+            subtitles=subtitle_url, license_url=URL_LICENCE_KEY % token)
 
-    for asset in video_assets:
-        if 'delta_dashcenc_h264' in asset["type"]:
-            return resolver_proxy.get_stream_with_quality(
-                plugin, video_url=final_video_url, manifest_type='mpd',
-                subtitles=subtitle_url, license_url=URL_LICENCE_KEY % token)
     return False

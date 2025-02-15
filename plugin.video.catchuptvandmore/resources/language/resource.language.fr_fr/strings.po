@@ -229,6 +229,10 @@ msgctxt "#30075"
 msgid "Luxembourg"
 msgstr "Luxembourg"
 
+msgctxt "#30076"
+msgid "Bolivia"
+msgstr "Bolivie"
+
 # Channels (from 30080 to 30129)
 
 msgctxt "#30080"
@@ -563,12 +567,12 @@ msgid "RTBF auvio Password"
 msgstr "Mot de passe RTBF auvio"
 
 msgctxt "#30260"
-msgid "Login MyTF1"
-msgstr ""
+msgid "TF1+ Login"
+msgstr "Identifiant TF1+"
 
 msgctxt "#30261"
-msgid "Mot de passe MyTF1"
-msgstr ""
+msgid "TF1+ Password"
+msgstr "Mot de passe TF1+"
 
 msgctxt "#30262"
 msgid "SFR TV login"
@@ -828,7 +832,7 @@ msgid "No videos found"
 msgstr "Aucune vidéo trouvée"
 
 msgctxt "#30719"
-msgid "Inputstream Adaptive not enable"
+msgid "Inputstream Adaptive not enabled"
 msgstr "Inputstream Adaptive n'est pas activé"
 
 msgctxt "#30720"
@@ -951,3 +955,7 @@ msgstr "Cette ressource requiert un paiement ou un abonnement"
 msgctxt "#30895"
 msgid "This resource is no longer available"
 msgstr "Cette ressource n'est plus disponible"
+
+msgctxt "#30896"
+msgid "No item"
+msgstr "Aucun élément"

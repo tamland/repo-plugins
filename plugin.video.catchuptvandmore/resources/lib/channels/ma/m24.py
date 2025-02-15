@@ -13,13 +13,20 @@ from codequick import Resolver
 
 from resources.lib import resolver_proxy, web_utils
 
-URL_LIVES = 'http://www.m24tv.ma/'
+URL_LIVE = 'https://www.m24tv.ma/'
+DIRECT_URL_LIVE = 'https://63df3191463ce.streamlock.net/live/ngrp:Live2.stream_all/playlist.m3u8'
+
+GENERIC_HEADERS = {'User-Agent': web_utils.get_random_windows_ua()}
 
 
 @Resolver.register
 def get_live_url(plugin, item_id, **kwargs):
 
-    resp = urlquick.get(URL_LIVES)
-    video_url = re.compile(r'Direct\ TV[\S\s]*\"file\"\:\ \"(.*\.m3u8.*)\"\,').findall(resp.text)[0]
+    try:
+        resp = urlquick.get(URL_LIVE, headers=GENERIC_HEADERS, max_age=-1)
+        video_url = re.compile(r'\"file\"\:\ \"(.*\.m3u8.*)\"\,').findall(resp.text)[0]
 
-    return resolver_proxy.get_stream_with_quality(plugin, video_url, manifest_type="hls")
+    except Exception:
+        video_url = DIRECT_URL_LIVE
+
+    return resolver_proxy.get_stream_with_quality(plugin, video_url)

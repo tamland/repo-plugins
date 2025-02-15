@@ -19,7 +19,7 @@ LANG = Script.setting['france24.language']
 TOKEN_APP = '66b85dad-3ad5-40f3-ab32-2305fc2357ea'
 URL_API = utils.urljoin_partial('https://apis.france24.com')
 
-GENERIC_HEADERS = {'User-Agent': web_utils.get_random_ua()}
+GENERIC_HEADERS = {'User-Agent': web_utils.get_fixed_ua()}
 
 
 @Route.register
@@ -27,7 +27,7 @@ def root_catchup_tv(plugin, item_id, **kwargs):
     # http://apis.france24.com/products/get_product/78dcf358-9333-4fb2-a035-7b91e9705b13?token_application=66b85dad-3ad5-40f3-ab32-2305fc2357ea
     root_json_url = 'products/get_product/78dcf358-9333-4fb2-a035-7b91e9705b13'
     root_json_r = urlquick.get(URL_API(root_json_url),
-                               headers={'User-Agent': web_utils.get_random_ua()},
+                               headers=GENERIC_HEADERS,
                                params={'token_application': TOKEN_APP})
     json_root = json.loads(root_json_r.text)
 
@@ -314,6 +314,6 @@ def get_live_url(plugin, item_id, **kwargs):
     language = kwargs.get('language', LANG)
 
     root = urlquick.get(URL_LIVE % (language, live_translation[language]), headers=GENERIC_HEADERS, max_age=-1)
-    video_id = root.parse('video-player').get('video-id')
+    video_id = root.parse('youtube-player').get('video-id')
 
     return resolver_proxy.get_stream_youtube(plugin, video_id)

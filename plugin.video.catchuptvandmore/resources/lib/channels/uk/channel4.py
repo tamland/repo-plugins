@@ -94,7 +94,7 @@ def list_seasons(plugin, url, **kwargs):
         script_text = script.text
         if script_text is not None and script_text.split()[0] == 'window.__PARAMS__':
             datas = json.loads(re.sub(r'^.*?{', '{', script_text).replace("undefined", "{}"))['initialData']['brand']
-            if bool(datas['allSeriesCount']) is False:
+            if bool(datas['allSeriesCount']) is False or len(datas['series']) == 0:
                 for episode in datas['episodes']:
                     if episode.get('assetId'):
                         item = Listitem()
@@ -114,7 +114,11 @@ def list_seasons(plugin, url, **kwargs):
                     series_number = season['seriesNumber']
                     item = Listitem()
                     item.label = season['title']
-                    item.art["thumb"] = item.art["landscape"] = datas['images']['image16x9']['src']
+                    if 'image16x9' in datas['images']:
+                        image = datas['images']['image16x9']['src']
+                    else:
+                        image = datas['images']['hero']['landscape']
+                    item.art["thumb"] = item.art["landscape"] = image
                     item.set_callback(get_episodes_list, series, series_number, datas)
                     item.info['plot'] = season['summary']
                     item_post_treatment(item)
