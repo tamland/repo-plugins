@@ -8,11 +8,6 @@
 					<default>true</default>
 					<control type="toggle"/>
 				</setting>
-				<setting id="Extract_Subtitles" type="boolean" label="30004" help="">
-					<level>0</level>
-					<default>false</default>
-					<control type="toggle"/>
-				</setting>
 				<setting id="Enable_Debugging" type="boolean" label="30000" help="">
 					<level>0</level>
 					<default>false</default>
@@ -48,11 +43,6 @@
 					<control type="toggle"/>
 				</setting>
 				<setting id="Shows_By_Date" type="boolean" label="30057" help="">
-					<level>0</level>
-					<default>true</default>
-					<control type="toggle"/>
-				</setting>
-				<setting id="Most_Searched_TV_Shows" type="boolean" label="30059" help="">
 					<level>0</level>
 					<default>true</default>
 					<control type="toggle"/>
