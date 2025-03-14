@@ -19,5 +19,5 @@
 
 from resources.lib import rsiplaytv
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     rsiplaytv.run()
