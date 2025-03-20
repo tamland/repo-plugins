@@ -28,18 +28,17 @@ import xbmcaddon
 import xbmcplugin
 import srgssr
 
-ADDON_ID = 'plugin.video.swiplaytv'
+ADDON_ID = "plugin.video.swiplaytv"
 REAL_SETTINGS = xbmcaddon.Addon(id=ADDON_ID)
-ADDON_NAME = REAL_SETTINGS.getAddonInfo('name')
-ADDON_VERSION = REAL_SETTINGS.getAddonInfo('version')
-DEBUG = (REAL_SETTINGS.getSetting('Enable_Debugging') == 'true')
-CONTENT_TYPE = 'videos'
+ADDON_NAME = REAL_SETTINGS.getAddonInfo("name")
+ADDON_VERSION = REAL_SETTINGS.getAddonInfo("version")
+DEBUG = REAL_SETTINGS.getSetting("Enable_Debugging") == "true"
+CONTENT_TYPE = "videos"
 
 
 class SWIPlayTV(srgssr.SRGSSR):
     def __init__(self):
-        super(SWIPlayTV, self).__init__(
-            int(sys.argv[1]), bu='swi', addon_id=ADDON_ID)
+        super(SWIPlayTV, self).__init__(int(sys.argv[1]), bu="swi", addon_id=ADDON_ID)
 
 
 def log(msg, level=xbmc.LOGDEBUG):
@@ -52,8 +51,8 @@ def log(msg, level=xbmc.LOGDEBUG):
     """
     if DEBUG:
         if level == xbmc.LOGERROR:
-            msg += ' ,' + traceback.format_exc()
-    xbmc.log(ADDON_ID + '-' + ADDON_VERSION + '-' + msg, level)
+            msg += " ," + traceback.format_exc()
+    xbmc.log(ADDON_ID + "-" + ADDON_VERSION + "-" + msg, level)
 
 
 def get_params():
@@ -78,52 +77,49 @@ def run():
     except Exception:
         mode = None
     try:
-        page_hash = unquote_plus(params['page_hash'])
+        page_hash = unquote_plus(params["page_hash"])
     except Exception:
         page_hash = None
     try:
-        page = unquote_plus(params['page'])
+        page = unquote_plus(params["page"])
     except Exception:
         page = None
 
-    log('Mode: ' + str(mode))
-    log('URL : ' + str(url))
-    log('Name: ' + str(name))
-    log('Page Hash: ' + str(page_hash))
-    log('Page: ' + str(page))
+    log("Mode: " + str(mode))
+    log("URL : " + str(url))
+    log("Name: " + str(name))
+    log("Page Hash: " + str(page_hash))
+    log("Page: " + str(page))
 
     if mode is None:
-        identifiers = [
-            'Homepage',
-            'Topics',
-            'Search',
-            'SWI_YouTube'
-        ]
-        SWIPlayTV().build_main_menu(identifiers)
+        identifiers = ["Homepage", "Topics", "Search", "SWI_YouTube"]
+        SWIPlayTV().menu_builder.build_main_menu(identifiers)
     elif mode == 13:
-        SWIPlayTV().build_topics_menu()
+        SWIPlayTV().menu_builder.build_topics_menu()
     elif mode == 21:
-        SWIPlayTV().build_episode_menu(name)
+        SWIPlayTV().menu_builder.build_episode_menu(name)
     elif mode == 27:
-        SWIPlayTV().build_search_menu()
+        SWIPlayTV().menu_builder.build_search_menu()
     elif mode == 28:
-        SWIPlayTV().build_search_media_menu(
-            mode=mode, name=name, page=page, page_hash=page_hash)
+        SWIPlayTV().menu_builder.build_search_media_menu(
+            mode=mode, name=name, page=page, page_hash=page_hash
+        )
     elif mode == 70:
-        SWIPlayTV().build_recent_search_menu()
+        SWIPlayTV().menu_builder.build_recent_search_menu()
     elif mode == 30:
-        SWIPlayTV().build_youtube_channel_overview_menu(33)
+        SWIPlayTV().youtube_builder.build_youtube_channel_overview_menu(33)
     elif mode == 33:
-        SWIPlayTV().build_youtube_channel_menu(
-            name, mode, page=page, page_token=page_hash)
+        SWIPlayTV().youtube_builder.build_youtube_channel_menu(
+            name, mode, page=page, page_token=page_hash
+        )
     elif mode == 50:
-        SWIPlayTV().play_video(name)
+        SWIPlayTV().player.play_video(name)
     elif mode == 100:
-        SWIPlayTV().build_menu_by_urn(name)
+        SWIPlayTV().menu_builder.build_menu_by_urn(name)
     elif mode == 200:
-        SWIPlayTV().build_homepage_menu()
+        SWIPlayTV().menu_builder.build_homepage_menu()
     elif mode == 1000:
-        SWIPlayTV().build_menu_apiv3(name, mode, page, page_hash)
+        SWIPlayTV().menu_builder.build_menu_apiv3(name, mode, page, page_hash)
 
     xbmcplugin.setContent(int(sys.argv[1]), CONTENT_TYPE)
     xbmcplugin.addSortMethod(int(sys.argv[1]), xbmcplugin.SORT_METHOD_UNSORTED)

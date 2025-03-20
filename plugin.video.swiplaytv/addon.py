@@ -19,5 +19,5 @@
 
 from resources.lib import swiplaytv
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     swiplaytv.run()
