@@ -230,8 +230,8 @@ def create_game_listitem(game, game_day, start_inning, today, nonentitlement_dat
         desc = ''
 
     is_free = False
-    if 'content' in game and 'media' in game['content'] and 'freeGame' in game['content']['media']:
-        is_free = game['content']['media']['freeGame']
+    if 'broadcasts' in game and len(game['broadcasts']) > 0 and 'freeGame' in game['broadcasts'][0] and game['broadcasts'][0]['freeGame'] is True:
+        is_free = True
 
     fav_game = False
     if game['teams']['away']['team']['name'] in FAV_TEAM:
@@ -741,7 +741,7 @@ def stream_select(game_pk, spoiler='True', suspended='False', start_inning='Fals
                 # check if our favorite team (if defined) is associated with this stream
                 # or if no favorite team match, look for the home or national streams
                 #if (FAV_TEAM != 'None' and 'mediaFeedSubType' in item and item['mediaFeedSubType'] == getFavTeamId()) or (selected_content_id is None and 'mediaFeedType' in item and (item['mediaFeedType'] == 'HOME' or item['mediaFeedType'] == 'NATIONAL' )):
-                if (FAV_TEAM != 'None' and ((item['homeAway'] == 'home' and json_source['dates'][0]['games'][0]['teams']['home']['team']['id'] == getFavTeamId()) or (item['homeAway'] == 'away' and json_source['dates'][0]['games'][0]['teams']['away']['team']['id'] == getFavTeamId()))) or (selected_content_id is None and (item['homeAway'] == 'home' or item['isNational'] == True )):
+                if (FAV_TEAM != 'None' and ((item['homeAway'] == 'home' and str(json_source['dates'][0]['games'][0]['teams']['home']['team']['id']) == str(getFavTeamId())) or (item['homeAway'] == 'away' and str(json_source['dates'][0]['games'][0]['teams']['away']['team']['id']) == str(getFavTeamId())))) or (selected_content_id is None and (item['homeAway'] == 'home' or item['isNational'] == True )):
                     # prefer live streams (suspended games can have both a live and archived stream available)
                     if item['mediaState']['mediaStateCode'] == 'MEDIA_ON':
                         selected_content_id = item['mediaId']
@@ -751,7 +751,7 @@ def stream_select(game_pk, spoiler='True', suspended='False', start_inning='Fals
                         #    selected_media_type = item['mediaFeedType']
                         # once we've found a fav team live stream, we don't need to search any further
                         #if FAV_TEAM != 'None' and 'mediaFeedSubType' in item and item['mediaFeedSubType'] == getFavTeamId():
-                        if FAV_TEAM != 'None' and ((item['homeAway'] == 'home' and json_source['dates'][0]['games'][0]['teams']['home']['team']['id'] == getFavTeamId()) or (item['homeAway'] == 'away' and json_source['dates'][0]['games'][0]['teams']['away']['team']['id'] == getFavTeamId())):
+                        if FAV_TEAM != 'None' and ((item['homeAway'] == 'home' and str(json_source['dates'][0]['games'][0]['teams']['home']['team']['id']) == str(getFavTeamId())) or (item['homeAway'] == 'away' and str(json_source['dates'][0]['games'][0]['teams']['away']['team']['id']) == str(getFavTeamId()))):
                             break
                     # fall back to the first available archive stream, but keep search in case there is a live stream (suspended)
                     elif item['mediaState']['mediaStateCode'] == 'MEDIA_ARCHIVE' and selected_content_id is None:
@@ -1518,9 +1518,10 @@ def live_fav_game():
                 settings.setSetting(id='auto_play_game_checked', value=str(now))
 
                 url = API_URL + '/api/v1/schedule'
-                url += '?hydrate=game(content(media(epg))),team'
+                url += '?hydrate=broadcasts'
                 url += '&sportId=1,51'
                 url += '&date=' + game_day
+                url += '&teamId=' + fav_team_id
 
                 headers = {
                     'User-Agent': UA_PC
@@ -1532,7 +1533,8 @@ def live_fav_game():
 
                 if 'dates' in json_source and len(json_source['dates']) > 0 and 'games' in json_source['dates'][0]:
                     games = json_source['dates'][0]['games']
-                    nonentitlement_data = get_nonentitlement_data()
+                    nonentitlement_data = get_nonentitlement_data(game_day)
+                    found = False
                     for game in games:
                         try:
                             # only check games that include our fav team
@@ -1541,19 +1543,26 @@ def live_fav_game():
                                 if game['status']['abstractGameState'] != 'Final':
                                     # only check games that are entitled and not blacked out
                                     if str(game['gamePk']) not in nonentitlement_data:
-                                        if 'content' in game and 'media' in game['content'] and 'epg' in game['content']['media'] and len(game['content']['media']['epg']) > 0 and 'items' in game['content']['media']['epg'][0]:
-                                            for epg in game['content']['media']['epg'][0]['items']:
+                                        mediaStateCode = None
+                                        for broadcast in game.get('broadcasts', []):
+                                            mediaStateCode = broadcast.get('mediaState', {}).get('mediaStateCode', '')
+                                            if mediaStateCode:
                                                 # if media is off, assume it is still upcoming
-                                                if epg['mediaState'] == 'MEDIA_OFF':
+                                                if mediaStateCode == 'MEDIA_OFF':
                                                     if game['status']['startTimeTBD'] is True:
                                                         upcoming_game = 'TBD'
                                                     else:
                                                         upcoming_game = parse(game['gameDate']) - timedelta(minutes=10)
+                                                    found = True
                                                 # if media is on, that means it is live
-                                                elif game_pk is None and epg['mediaState'] == 'MEDIA_ON':
+                                                elif game_pk is None and mediaStateCode == 'MEDIA_ON':
                                                     game_pk = str(game['gamePk'])
                                                     xbmc.log('Found live fav game ' + game_pk)
-                                                    break
+                                                    found = True
+                                            if found:
+                                                break  # broadcast loop
+                            if found:
+                                break  # game loop
                         except:
                             pass
 
