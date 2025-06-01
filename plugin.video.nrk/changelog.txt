@@ -1,5 +1,17 @@
-[B]4.7.99[/B]
-- Adattato a Kodi 20 by a99b ^zZz^
+[B]4.9.2[/B]
+- use hardcoded username to fix github action
+
+[B]4.9.1[/B]
+- exclude github actions when publishing to kodi repo
+
+[B]4.9.0[/B]
+- Update license to SPDX format in addon.xml
+- Fix radio title
+- Create kodi-addon-submitter.yml
+- Split live TV and radio shows into separate submenus
+
+[B]4.8.0[/B]
+Tilpasninger for Kodi v20 Nexus. Noe småfikser etter API-endringer // Adaptations for Kodi v20 Nexus. Some small fixes after some changes in the API
 
 [B]4.7.0[/B]
 - Fikset plugin etter API-endringer

@@ -34,7 +34,8 @@ plugin = routing.Plugin()
 @plugin.route('/')
 def root():
     items = [
-        (plugin.url_for(live), ListItem("Direkte"), True),
+        (plugin.url_for(live_tv), ListItem("Direkte TV"), True),
+        (plugin.url_for(live_radio), ListItem("Direkte radio"), True),
         (plugin.url_for(recommended), ListItem("Anbefalt"), True),
         (plugin.url_for(popular), ListItem("Mest sett"), True),
         (plugin.url_for(mostrecent), ListItem("Sist sendt"), True),
@@ -45,8 +46,8 @@ def root():
     endOfDirectory(plugin.handle)
 
 
-@plugin.route('/live')
-def live():
+@plugin.route('/live_tv')
+def live_tv():
     for ch in nrktv.channels():
         li = ListItem(ch.title)
         li.setProperty('mimetype', "application/vnd.apple.mpegurl")
@@ -58,12 +59,17 @@ def live():
         addDirectoryItem(plugin.handle,
                          plugin.url_for(live_resolve, ch.manifest.split('/')[-1]), li, False)
 
+    endOfDirectory(plugin.handle)
+
+
+@plugin.route('/live_radio')
+def live_radio():
     for rd in nrktv.radios():
         li = ListItem(rd.title)
         li.setProperty('mimetype', "audio/mpeg")
         li.setProperty('isplayable', 'true')
         li.setArt({'thumb': rd.thumb, 'fanart': rd.fanart})
-        li.setInfo('video', {'title': ch.title})
+        li.setInfo('video', {'title': rd.title})
         li.addStreamInfo('audio', {'codec': 'aac', 'channels': 2})
         addDirectoryItem(plugin.handle,
                          plugin.url_for(live_resolve, rd.manifest.split('/')[-1]), li, False)
@@ -80,7 +86,7 @@ def live_resolve(id):
     setResolvedUrl(plugin.handle, success, li)
 
 
-def set_steam_details(item, li):
+def set_stream_details(item, li):
     li.setProperty('isplayable', 'true')
     li.addStreamInfo('video', {'codec': 'h264', 'width': 1280, 'height': 720, 'duration': item.duration})
     li.addStreamInfo('audio', {'codec': 'aac', 'channels': 2})
@@ -112,7 +118,7 @@ def view(items, update_listing=False, urls=None):
         set_common_properties(item, li)
         playable = plugin.route_for(url) == play
         if playable:
-            set_steam_details(item, li)
+            set_stream_details(item, li)
         li.setInfo('video', {'count': i, 'title': item.title, 'mediatype': 'video'})
         addDirectoryItem(plugin.handle, url, li, not playable, total)
     endOfDirectory(plugin.handle, updateListing=update_listing)
@@ -130,7 +136,7 @@ def show_episode_list(episodes):
     for i, item in enumerate(episodes):
         li = ListItem("%s - %s" % (item.episode, item.title))
         set_common_properties(item, li)
-        set_steam_details(item, li)
+        set_stream_details(item, li)
         li.setInfo('video', {
             'title': item.title,
             'count': i,
@@ -150,7 +156,7 @@ def show_plug_list(items):
             title += " (%s)" % item.episode
         li = ListItem(title)
         set_common_properties(item, li)
-        set_steam_details(item, li)
+        set_stream_details(item, li)
         li.setInfo('video', {
             'title': title,
             'count': i,

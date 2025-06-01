@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-# adattato a kodi 20.0 da a99b
+
 
 
 import datetime
@@ -140,16 +140,16 @@ class Program(Series):
         media_urls = []
 
         manifest = _get('/playback/manifest/{}'.format(r.get('id')))
-        # adapted to Kodi 20.0 by a99b
+        
         try:
             if manifest.json()['playability'] == 'playable':
                 media_urls = list( map(lambda x: x['url'], manifest.json()['playable']['assets']) )
                 media_urls
-        except:  # the manifest seems to already be a dict
+        except:
             if manifest['playability'] == 'playable':
                 media_urls = list( map(lambda x: x['url'], manifest['playable']['assets']) )
                 media_urls            
-        ########## end modification ##########
+        
         images = _image_url_key_standardize(r.get('image', {}).get('webImages', None))
         duration = _duration_to_seconds(r.get('duration', 0))
         legal_age = r.get('legalAge', None)
